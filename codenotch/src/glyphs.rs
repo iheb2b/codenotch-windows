@@ -2,12 +2,15 @@
 //!
 //! Rule: **no vendor logo is drawn by hand here**; only existing artwork is used, in this order:
 //!   1. User override: `%APPDATA%\codenotch\glyphs\<id>.svg|.png`, or `glyphs\` next to the exe;
-//!   2. Built in: the `glyphs/*.svg` compiled into the exe, from npm `@lobehub/icons-static-svg`
-//!      1.95.0 (MIT), files unmodified; trademark notice in glyphs/NOTICE.md;
-//!   3. The installed application's own icon (PrivateExtractIconsW on the exe resources, 64 px → PNG);
+//!   2. The installed/running application's own icon (PrivateExtractIconsW on the exe resources,
+//!      64 px → PNG);
+//!   3. Built in: original provider artwork compiled into the exe from each provider's official
+//!      press/brand kit (and the installed Codex Windows package); provenance in glyphs/NOTICE.md;
 //!   none of those → the page falls back to a letter.
-//! SVGs are inlined into the DOM as text (`fill="currentColor"` follows the CSS white/dimmed state);
-//! PNGs and app icons go through <img>. Ids match the page and upstream: claude / codex / cursor / gemini.
+//! Trusted built-in SVGs are inlined into the DOM; user SVGs, PNGs and app icons go through <img>
+//! so user-provided markup never enters the document. Official brand icons use `brandicon` so the
+//! UI never recolours or redraws them. Ids match the page and upstream:
+//! claude / codex / cursor / copilot / gemini.
 
 use serde::Serialize;
 use std::collections::HashMap;
@@ -15,25 +18,17 @@ use std::path::{Path, PathBuf};
 
 #[derive(Clone, Serialize, Debug, Default)]
 pub struct Glyph {
-    /// svg = inline SVG (monochrome, follows currentColor); png = bitmap artwork; appicon = application icon (colour, rounded and shrunk)
+    /// svg = trusted inline SVG; svgimg/png = user artwork; appicon = extracted application icon; brandicon = untouched official built-in artwork
     pub kind: String,
-    /// data: URL for png/appicon
+    /// data: URL for svgimg/png/appicon
     pub url: String,
-    /// The SVG text (script and on* event attributes removed)
+    /// Trusted built-in SVG text (script and on* event attributes removed defensively)
     pub svg: String,
     /// Where it came from (for doctor)
     pub source: String,
 }
 
-pub const IDS: [&str; 4] = ["claude", "codex", "cursor", "gemini"];
-
-/// Built-in artwork (@lobehub/icons-static-svg, MIT): the OpenAI mark for codex (matching upstream's glyph choice), the Antigravity mark for gemini
-const BUILTIN: [(&str, &str); 4] = [
-    ("claude", include_str!("../glyphs/claude.svg")),
-    ("codex", include_str!("../glyphs/codex.svg")),
-    ("cursor", include_str!("../glyphs/cursor.svg")),
-    ("gemini", include_str!("../glyphs/gemini.svg")),
-];
+pub const IDS: [&str; 5] = ["claude", "codex", "cursor", "copilot", "gemini"];
 
 /// Minimal SVG sanitising before inlining into the DOM: drop <script> blocks and on*="…" event
 /// attributes (the built-in files have none; this guards user files). Every slice position comes
@@ -57,9 +52,14 @@ fn sanitize_svg(s: &str) -> String {
     let mut res = String::with_capacity(out.len());
     let mut i = 0;
     loop {
-        let Some(rel) = lo[i..].find(" on") else { break };
+        let Some(rel) = lo[i..].find(" on") else {
+            break;
+        };
         let start = i + rel;
-        let name_len = lo[start + 3..].bytes().take_while(|b| b.is_ascii_alphanumeric()).count();
+        let name_len = lo[start + 3..]
+            .bytes()
+            .take_while(|b| b.is_ascii_alphanumeric())
+            .count();
         let eq = start + 3 + name_len;
         if name_len > 0 && lo.as_bytes().get(eq) == Some(&b'=') {
             if let Some(&q) = lo.as_bytes().get(eq + 1) {
@@ -100,14 +100,69 @@ fn b64(bytes: &[u8]) -> String {
     const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity((bytes.len() + 2) / 3 * 4);
     for chunk in bytes.chunks(3) {
-        let b = [chunk[0], *chunk.get(1).unwrap_or(&0), *chunk.get(2).unwrap_or(&0)];
+        let b = [
+            chunk[0],
+            *chunk.get(1).unwrap_or(&0),
+            *chunk.get(2).unwrap_or(&0),
+        ];
         let n = ((b[0] as u32) << 16) | ((b[1] as u32) << 8) | b[2] as u32;
         out.push(T[(n >> 18) as usize & 63] as char);
         out.push(T[(n >> 12) as usize & 63] as char);
-        out.push(if chunk.len() > 1 { T[(n >> 6) as usize & 63] as char } else { '=' });
-        out.push(if chunk.len() > 2 { T[n as usize & 63] as char } else { '=' });
+        out.push(if chunk.len() > 1 {
+            T[(n >> 6) as usize & 63] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            T[n as usize & 63] as char
+        } else {
+            '='
+        });
     }
     out
+}
+
+fn built_in(id: &str) -> Option<Glyph> {
+    match id {
+        "claude" => Some(Glyph {
+            kind: "brandicon".into(),
+            svg: sanitize_svg(include_str!("../glyphs/claude-original.svg")),
+            source: "built-in · Anthropic official press kit · ClaudeIcon-Rounded.svg".into(),
+            ..Default::default()
+        }),
+        "codex" => Some(Glyph {
+            kind: "brandicon".into(),
+            url: format!(
+                "data:image/png;base64,{}",
+                b64(include_bytes!("../glyphs/codex-original.png"))
+            ),
+            source: "built-in · official Codex for Windows package · assets/icon.png".into(),
+            ..Default::default()
+        }),
+        "cursor" => Some(Glyph {
+            kind: "brandicon".into(),
+            url: format!(
+                "data:image/png;base64,{}",
+                b64(include_bytes!("../glyphs/cursor-original.png"))
+            ),
+            source: "built-in · Cursor official brand kit · APP_ICON_25D_DARK.png".into(),
+            ..Default::default()
+        }),
+        "copilot" => Some(Glyph {
+            kind: "brandicon".into(),
+            svg: sanitize_svg(include_str!("../glyphs/github-original.svg")),
+            source: "built-in · official GitHub brand kit · GitHub_Invertocat_White_Clearspace.svg"
+                .into(),
+            ..Default::default()
+        }),
+        "gemini" => Some(Glyph {
+            kind: "svg".into(),
+            svg: sanitize_svg(include_str!("../glyphs/gemini.svg")),
+            source: "built-in · @lobehub/icons-static-svg 1.95.0 (MIT)".into(),
+            ..Default::default()
+        }),
+        _ => None,
+    }
 }
 
 fn from_file(p: &Path) -> Option<Glyph> {
@@ -115,11 +170,16 @@ fn from_file(p: &Path) -> Option<Glyph> {
     if bytes.is_empty() || bytes.len() > 512 * 1024 {
         return None;
     }
-    let ext = p.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    let ext = p
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
     match ext.as_str() {
         "svg" => Some(Glyph {
-            kind: "svg".into(),
-            svg: sanitize_svg(&String::from_utf8_lossy(&bytes)),
+            // Never inline user-controlled SVG markup in the WebView. Loading it as an image
+            // preserves custom artwork while keeping its document and script context inert.
+            kind: "svgimg".into(),
+            url: format!("data:image/svg+xml;base64,{}", b64(&bytes)),
             source: p.display().to_string(),
             ..Default::default()
         }),
@@ -136,7 +196,9 @@ fn from_file(p: &Path) -> Option<Glyph> {
 /// Candidate executables of the installed apps (Windows); MSIX store versions live under WindowsApps where a normal process cannot read them, and that is fine
 fn app_candidates(id: &str) -> Vec<PathBuf> {
     let mut v = Vec::new();
-    let Some(local) = dirs::data_local_dir() else { return v };
+    let Some(local) = dirs::data_local_dir() else {
+        return v;
+    };
     let programs = local.join("Programs");
     match id {
         "claude" => {
@@ -162,23 +224,88 @@ fn app_candidates(id: &str) -> Vec<PathBuf> {
             v.push(programs.join("cursor").join("Cursor.exe"));
             v.push(programs.join("Cursor").join("Cursor.exe"));
         }
+        "copilot" => {
+            v.push(programs.join("GitHub Copilot").join("GitHubCopilot.exe"));
+            v.push(programs.join("GitHub Copilot").join("copilot.exe"));
+            if let Some(exe) = crate::copilot::find_executable() {
+                v.push(exe);
+            }
+        }
         "gemini" => {
             v.push(programs.join("Antigravity").join("Antigravity.exe"));
             v.push(programs.join("antigravity").join("Antigravity.exe"));
         }
         _ => {}
     }
+    v.extend(running_app_candidates(id));
     v.into_iter().filter(|p| p.is_file()).collect()
+}
+
+/// Resolve the executable paths of already-running provider apps. This is important for MSIX apps
+/// such as Codex: their versioned WindowsApps path cannot be guessed or enumerated reliably, but a
+/// process may disclose its own image path through PROCESS_QUERY_LIMITED_INFORMATION.
+#[cfg(windows)]
+fn running_app_candidates(id: &str) -> Vec<PathBuf> {
+    use windows::core::PWSTR;
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Threading::{
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
+        PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+
+    let names: &[&str] = match id {
+        "claude" => &["claude.exe", "claude desktop.exe"],
+        "codex" => &["chatgpt.exe", "codex.exe"],
+        "cursor" => &["cursor.exe"],
+        "copilot" => &["githubcopilot.exe", "github copilot.exe", "copilot.exe"],
+        "gemini" => &["antigravity.exe"],
+        _ => &[],
+    };
+    let maps = crate::focus::proc_maps();
+    let mut paths = Vec::new();
+    for (pid, name) in maps.name {
+        if !names.iter().any(|candidate| *candidate == name) {
+            continue;
+        }
+        unsafe {
+            let Ok(handle) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) else {
+                continue;
+            };
+            let mut buf = vec![0u16; 32_768];
+            let mut len = buf.len() as u32;
+            if QueryFullProcessImageNameW(
+                handle,
+                PROCESS_NAME_WIN32,
+                PWSTR(buf.as_mut_ptr()),
+                &mut len,
+            )
+            .is_ok()
+            {
+                paths.push(PathBuf::from(String::from_utf16_lossy(
+                    &buf[..len as usize],
+                )));
+            }
+            let _ = CloseHandle(handle);
+        }
+    }
+    paths
+}
+
+#[cfg(not(windows))]
+fn running_app_candidates(_id: &str) -> Vec<PathBuf> {
+    Vec::new()
 }
 
 /// Icon from the exe resources → 64 px RGBA → PNG data URL
 #[cfg(windows)]
 fn from_exe(p: &Path) -> Option<Glyph> {
     use windows::Win32::Graphics::Gdi::{
-        DeleteObject, GetDC, GetDIBits, GetObjectW, ReleaseDC, BITMAP, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
-        DIB_RGB_COLORS,
+        DeleteObject, GetDC, GetDIBits, GetObjectW, ReleaseDC, BITMAP, BITMAPINFO,
+        BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
     };
-    use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, GetIconInfo, PrivateExtractIconsW, HICON, ICONINFO};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        DestroyIcon, GetIconInfo, PrivateExtractIconsW, HICON, ICONINFO,
+    };
 
     use std::os::windows::ffi::OsStrExt;
     let wide: Vec<u16> = p.as_os_str().encode_wide().collect();
@@ -191,7 +318,15 @@ fn from_exe(p: &Path) -> Option<Glyph> {
     unsafe {
         let mut icons = [HICON::default(); 1];
         let mut id = 0u32;
-        let n = PrivateExtractIconsW(&name, 0, SIZE, SIZE, Some(&mut icons[..]), Some(&mut id as *mut u32), 0);
+        let n = PrivateExtractIconsW(
+            &name,
+            0,
+            SIZE,
+            SIZE,
+            Some(&mut icons[..]),
+            Some(&mut id as *mut u32),
+            0,
+        );
         if n == 0 || icons[0].is_invalid() {
             return None;
         }
@@ -201,7 +336,11 @@ fn from_exe(p: &Path) -> Option<Glyph> {
         let mut result = None;
         if ok && !info.hbmColor.is_invalid() {
             let mut bm = BITMAP::default();
-            GetObjectW(info.hbmColor, std::mem::size_of::<BITMAP>() as i32, Some(&mut bm as *mut _ as *mut _));
+            GetObjectW(
+                info.hbmColor,
+                std::mem::size_of::<BITMAP>() as i32,
+                Some(&mut bm as *mut _ as *mut _),
+            );
             let (w, h) = (bm.bmWidth, bm.bmHeight);
             if w > 0 && h > 0 && w <= 512 && h <= 512 {
                 let hdc = GetDC(None);
@@ -216,7 +355,15 @@ fn from_exe(p: &Path) -> Option<Glyph> {
                     ..Default::default()
                 };
                 let mut buf = vec![0u8; (w * h * 4) as usize];
-                let lines = GetDIBits(hdc, info.hbmColor, 0, h as u32, Some(buf.as_mut_ptr() as *mut _), &mut bi, DIB_RGB_COLORS);
+                let lines = GetDIBits(
+                    hdc,
+                    info.hbmColor,
+                    0,
+                    h as u32,
+                    Some(buf.as_mut_ptr() as *mut _),
+                    &mut bi,
+                    DIB_RGB_COLORS,
+                );
                 let _ = ReleaseDC(None, hdc);
                 if lines > 0 {
                     // BGRA → RGBA; old-style icons with all-zero alpha are treated as opaque
@@ -278,22 +425,15 @@ pub fn collect() -> HashMap<String, Glyph> {
             }
         }
         if found.is_none() {
-            if let Some((_, svg)) = BUILTIN.iter().find(|(k, _)| *k == id) {
-                found = Some(Glyph {
-                    kind: "svg".into(),
-                    svg: sanitize_svg(svg),
-                    source: "built-in · @lobehub/icons-static-svg 1.95.0 (MIT)".into(),
-                    ..Default::default()
-                });
-            }
-        }
-        if found.is_none() {
             for exe in app_candidates(id) {
                 if let Some(g) = from_exe(&exe) {
                     found = Some(g);
                     break;
                 }
             }
+        }
+        if found.is_none() {
+            found = built_in(id);
         }
         if let Some(g) = found {
             map.insert(id.to_string(), g);
@@ -305,7 +445,10 @@ pub fn collect() -> HashMap<String, Glyph> {
 /// For doctor
 pub fn probe() -> String {
     let m = collect();
-    let mut lines = vec![format!("glyph directory: {} (drop claude/codex/cursor/gemini .svg or .png files here)", user_dir().display())];
+    let mut lines = vec![format!(
+        "glyph directory: {} (drop claude/codex/cursor/copilot/gemini .svg or .png files here)",
+        user_dir().display()
+    )];
     for id in IDS {
         lines.push(match m.get(id) {
             Some(g) => format!("  {id}: {} ← {}", g.kind, g.source),

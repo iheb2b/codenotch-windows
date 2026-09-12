@@ -12,22 +12,24 @@ mod tray;
 mod usage;
 mod codex;
 mod cursor;
+mod copilot;
 mod antigravity;
 mod agy_cli;
 mod glyphs;
 mod trayicon;
 mod activity;
+mod approvals;
 mod diag;
 mod watcher;
 
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager};
 
-/// Logical size of the notch window: the 70 pt pill column on the right plus room for the hover card on the left.
-pub const NOTCH_W: f64 = 340.0;
+/// Logical size of the notch window: the enlarged rail on the right plus room for the hover card.
+pub const NOTCH_W: f64 = 480.0;
 /// Hand-bumped build tag, written to run.log at startup so a log can always be matched to the exe that wrote it.
-pub const BUILD: &str = "r32-smart-capsule";
-pub const NOTCH_H: f64 = 460.0; // 300 clipped the card once it held three window blocks plus the session list
+pub const BUILD: &str = "v0.4.0-liquid-dashboard";
+pub const NOTCH_H: f64 = 680.0; // room for the 125% approval card without clipping its actions
 
 pub struct AppState {
     pub store: Mutex<state::Store>,
@@ -36,11 +38,15 @@ pub struct AppState {
     /// Codex snapshot (same UsageSnapshot shape; status may also be none/absent)
     pub codex: Mutex<usage::UsageSnapshot>,
     pub cursor: Mutex<usage::UsageSnapshot>,
+    pub copilot: Mutex<usage::UsageSnapshot>,
     pub antigravity: Mutex<usage::UsageSnapshot>,
     /// Provider glyph cache, collected at launch and again on a tray refresh
     pub glyphs: Mutex<std::collections::HashMap<String, glyphs::Glyph>>,
-    /// Working state of the non-Claude providers (Cursor reports it; Codex and Antigravity are inferred from recent writes)
+    /// Working state of the non-Claude providers (Cursor reports it; others are inferred from
+    /// local app/process activity and recent writes).
     pub activity: Mutex<Vec<activity::Activity>>,
+    /// Ephemeral one-shot permission requests. Tool arguments are deliberately never persisted.
+    pub approvals: Mutex<approvals::ApprovalStore>,
 }
 
 fn resolved_lang(raw: &str) -> String {
@@ -77,7 +83,7 @@ pub fn place_notch(app: &AppHandle) {
     if let Ok(Some(mon)) = w.primary_monitor() {
         // Two monitors at different scales (150 % and 200 % in practice): the physical size can
         // end up converted with the *other* monitor's scale factor depending on where the window
-        // is created and then moved, leaving the WebView ~256 logical px wide instead of 340.
+        // is created and then moved, leaving the WebView much narrower than the 480 px design.
         // So the physical size is pinned straight from mon.scale_factor() before placing the
         // window; if it still reports a different scale afterwards, it is pinned once more.
         let ms = mon.scale_factor();
@@ -266,6 +272,7 @@ fn refresh_usage(app: AppHandle) {
     usage::request_refresh();
     codex::request_refresh();
     cursor::request_refresh();
+    copilot::request_refresh();
     antigravity::request_refresh();
 }
 
@@ -282,6 +289,26 @@ fn get_activity(state: tauri::State<AppState>) -> Vec<activity::Activity> {
 #[tauri::command]
 fn get_glyphs(state: tauri::State<AppState>) -> std::collections::HashMap<String, glyphs::Glyph> {
     state.glyphs.lock().unwrap().clone()
+}
+
+#[derive(Clone, serde::Serialize, Default)]
+struct ProviderModelInfo {
+    model: String,
+    effort: String,
+}
+
+/// Current model metadata is local, best-effort context—not a fabricated quota. Claude session
+/// models already travel in `get_state`; Codex exposes its explicit rollout fields here.
+#[tauri::command]
+fn get_provider_models() -> std::collections::HashMap<String, ProviderModelInfo> {
+    let mut models = std::collections::HashMap::new();
+    if let Some((model, effort)) = codex::latest_model_info() {
+        models.insert(
+            "codex".into(),
+            ProviderModelInfo { model, effort },
+        );
+    }
+    models
 }
 
 /// Collects the glyphs again and pushes them to the page (tray refresh, or the user just dropped in an override)
@@ -312,6 +339,11 @@ fn get_cursor(state: tauri::State<AppState>) -> usage::UsageSnapshot {
 }
 
 #[tauri::command]
+fn get_copilot(state: tauri::State<AppState>) -> usage::UsageSnapshot {
+    state.copilot.lock().unwrap().clone()
+}
+
+#[tauri::command]
 fn get_codex(state: tauri::State<AppState>) -> usage::UsageSnapshot {
     state.codex.lock().unwrap().clone()
 }
@@ -322,6 +354,7 @@ fn open_provider_page(provider: String) {
     let url = match provider.as_str() {
         "codex" => "https://chatgpt.com/#settings/Account",
         "cursor" => "https://cursor.com/dashboard",
+        "copilot" => "https://github.com/settings/billing/usage",
         "gemini" => "https://antigravity.google",
         _ => "https://claude.ai/settings/usage",
     };
@@ -341,6 +374,29 @@ fn open_provider_page(provider: String) {
 #[tauri::command]
 fn focus_provider_app(provider: String) -> bool {
     focus::focus_provider(&provider)
+}
+
+#[tauri::command]
+fn get_approvals(state: tauri::State<AppState>) -> Vec<approvals::PendingApproval> {
+    state.approvals.lock().unwrap().list()
+}
+
+/// Resolve exactly one still-pending request. There is intentionally no `allow always` path: the
+/// notch is a small surface, so broader permission changes belong in the provider's full UI.
+#[tauri::command]
+fn resolve_approval(app: AppHandle, id: String, decision: String) -> bool {
+    let changed = {
+        let st = app.state::<AppState>();
+        st.approvals.lock().unwrap().resolve(&id, &decision)
+    };
+    if changed {
+        let pending = {
+            let st = app.state::<AppState>();
+            st.approvals.lock().unwrap().list()
+        };
+        let _ = app.emit("approvals", pending);
+    }
+    changed
 }
 
 /// Hot rectangles in **physical pixels**, window-relative, as x,y,w,h: the pill, plus the card
@@ -387,10 +443,10 @@ pub fn applog(line: &str) {
 }
 
 /// Root cause: with two monitors (150 % / 200 %) WebView2 picked a devicePixelRatio of 2.0 while
-/// the window was sized for the primary monitor's 1.5, so the page was 255 CSS px wide instead of
-/// the designed 340 and every coordinate conversion was off (the watchdog misfired and the card
+/// the window was sized for the primary monitor's 1.5, so the page was far narrower than the
+/// designed 480 px and every coordinate conversion was off (the watchdog misfired and the card
 /// flashed away). Fix: the page reports its DPR, and when it differs from the primary monitor's
-/// scale, set_zoom pulls the effective DPR back to that scale, restoring the 340 px width.
+/// scale, set_zoom pulls the effective DPR back to that scale, restoring the 480 px width.
 #[tauri::command]
 fn report_dpr(app: AppHandle, dpr: f64, w: f64, h: f64) {
     let Some(win) = app.get_webview_window("notch") else { return };
@@ -627,6 +683,7 @@ fn snapshot_of(app: &AppHandle, id: &str) -> usage::UsageSnapshot {
     match id {
         "codex" => st.codex.lock().unwrap().clone(),
         "cursor" => st.cursor.lock().unwrap().clone(),
+        "copilot" => st.copilot.lock().unwrap().clone(),
         "gemini" => st.antigravity.lock().unwrap().clone(),
         _ => st.usage.lock().unwrap().clone(),
     }
@@ -903,17 +960,52 @@ fn open_settings(app: AppHandle) {
     }
 }
 
+#[tauri::command]
+fn open_dashboard(app: AppHandle) {
+    if let Some(w) = app.get_webview_window("dashboard") {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+    }
+}
+
+/// Dashboard build links come from GitHub's API, but opening an arbitrary URL from a transparent
+/// always-on-top surface would be an unnecessary escape hatch. Only normal github.com HTTPS links
+/// are accepted, and Explorer hands them to the user's default browser without a command shell.
+fn is_safe_github_url(url: &str) -> bool {
+    url.starts_with("https://github.com/")
+        && !url.contains('\r')
+        && !url.contains('\n')
+        && !url.contains('\0')
+}
+
+#[tauri::command]
+fn open_github_url(url: String) -> bool {
+    if !is_safe_github_url(&url) {
+        return false;
+    }
+    let mut cmd = std::process::Command::new("explorer.exe");
+    cmd.arg(url);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000);
+    }
+    cmd.spawn().is_ok()
+}
+
 pub fn provider_label(id: &str) -> &'static str {
     match id {
         "codex" => "Codex",
         "cursor" => "Cursor",
+        "copilot" => "GitHub Copilot",
         "gemini" => "Antigravity",
         _ => "Claude",
     }
 }
 
 /// Every provider the tray menu can offer, in the order the notch shows them.
-pub const TRAY_PROVIDER_IDS: [&str; 4] = ["claude", "codex", "cursor", "gemini"];
+pub const TRAY_PROVIDER_IDS: [&str; 5] = ["claude", "codex", "cursor", "copilot", "gemini"];
 
 /// Draws the icon and writes the tooltip. Shared by the polling thread and by the settings window,
 /// so a change made in settings shows up at once rather than on the next poll.
@@ -1093,22 +1185,28 @@ fn main() {
             usage: Mutex::new(usage::load_persisted()),
             codex: Mutex::new(codex::load_persisted()),
             cursor: Mutex::new(cursor::load_persisted()),
+            copilot: Mutex::new(copilot::load_persisted()),
             antigravity: Mutex::new(antigravity::load_persisted()),
             glyphs: Mutex::new(Default::default()),
             activity: Mutex::new(Vec::new()),
+            approvals: Mutex::new(Default::default()),
         })
         .invoke_handler(tauri::generate_handler![
             get_state,
             get_usage,
             get_codex,
             get_cursor,
+            get_copilot,
             get_antigravity,
             get_glyphs,
+            get_provider_models,
             get_activity,
             open_data_dir,
             drag_begin,
             open_provider_page,
             focus_provider_app,
+            get_approvals,
+            resolve_approval,
             refresh_usage,
             open_usage_page,
             set_hot,
@@ -1137,7 +1235,9 @@ fn main() {
             get_hooks_installed,
             set_hooks_installed,
             reset_notch_position,
-            open_settings
+            open_settings,
+            open_dashboard,
+            open_github_url
         ])
         .setup(move |app| {
             let handle = app.handle().clone();
@@ -1158,14 +1258,31 @@ fn main() {
                     }
                 });
             }
+            if let Some(w) = handle.get_webview_window("dashboard") {
+                let hide_me = w.clone();
+                w.on_window_event(move |e| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = e {
+                        api.prevent_close();
+                        let _ = hide_me.hide();
+                    }
+                });
+            }
             start_tray_updater(handle.clone());
             // Honours the saved switches: a notch hidden last time stays hidden.
             apply_visibility(&handle);
+            // Persist the token and port before accepting hook connections. This closes the tiny
+            // first-run race where the helper could start before its shared configuration exists.
+            {
+                let st = handle.state::<AppState>();
+                let c = st.cfg.lock().unwrap();
+                config::save(&c);
+            }
             server::start(handle.clone(), port);
             watcher::start(handle.clone());
             usage::start(handle.clone());
             codex::start(handle.clone());
             cursor::start(handle.clone());
+            copilot::start(handle.clone());
             antigravity::start(handle.clone());
             activity::start(handle.clone());
             // Collecting glyphs may read icon resources out of a few executables; do it off the main thread and push when done
@@ -1196,12 +1313,6 @@ fn main() {
                     broadcast(&sweeper);
                 }
             });
-            // Persist the config (codenotch-hook reads the port from it)
-            {
-                let st = handle.state::<AppState>();
-                let c = st.cfg.lock().unwrap();
-                config::save(&c);
-            }
             Ok(())
         })
         .run(tauri::generate_context!())
@@ -1210,7 +1321,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{cursor_in_hot, HOT_PAD};
+    use super::{cursor_in_hot, is_safe_github_url, HOT_PAD};
 
     /// Real values from the run.log in #106: a 2560×1600 display at 150 %.
     const PILL: [f64; 4] = [405.0, 183.5, 105.0, 323.0];
@@ -1279,5 +1390,15 @@ mod tests {
     fn an_unreadable_window_size_falls_back_to_the_rectangles() {
         assert!(cursor_in_hot(&[PILL], 450.0, 300.0, None));
         assert!(!cursor_in_hot(&[PILL], 100.0, 300.0, None));
+    }
+
+    #[test]
+    fn dashboard_opens_only_normal_github_links() {
+        assert!(is_safe_github_url(
+            "https://github.com/iheb2b/codenotch-windows/actions/runs/123"
+        ));
+        assert!(!is_safe_github_url("http://github.com/iheb2b/repo"));
+        assert!(!is_safe_github_url("https://github.com.evil.example/repo"));
+        assert!(!is_safe_github_url("https://github.com/owner/repo\r\n--flag"));
     }
 }

@@ -21,6 +21,10 @@ pub struct TraySlot {
 pub struct Config {
     #[serde(default = "default_port")]
     pub port: u16,
+    /// Shared only between the local hook helper and the loopback event server. The custom header
+    /// prevents an arbitrary web page from manufacturing an approval card through a no-CORS POST.
+    #[serde(default)]
+    pub bridge_token: String,
     /// "auto" | "zh" | "en" | "ja" | "ko" | "ru"
     #[serde(default = "default_lang")]
     pub lang: String,
@@ -47,7 +51,7 @@ pub struct Config {
     #[serde(default = "default_tray_mode")]
     pub tray_mode: String,
     /// Which providers the tray icon covers, in the order they are drawn. Ids match the page:
-    /// "claude", "codex", "cursor", "gemini". Superseded by `tray_slots`; kept so an existing
+    /// "claude", "codex", "cursor", "copilot", "gemini". Superseded by `tray_slots`; kept so an existing
     /// config still upgrades cleanly, and migrated in `load()`.
     #[serde(default = "default_tray_providers")]
     pub tray_providers: Vec<String>,
@@ -109,10 +113,15 @@ fn default_lang() -> String {
     "auto".into()
 }
 
+fn valid_bridge_token(token: &str) -> bool {
+    token.len() == 32 && token.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
             port: default_port(),
+            bridge_token: String::new(),
             lang: default_lang(),
             bar_x: None,
             bar_y: None,
@@ -124,7 +133,7 @@ impl Default for Config {
             tray_providers: default_tray_providers(),
             tray_slots: Vec::new(), // filled in by load(), from tray_providers
             notch_providers: Vec::new(), // empty = show them all
-            notch_slots: Vec::new(),     // filled in by load(), from notch_providers
+            notch_slots: Vec::new(), // filled in by load(), from notch_providers
             notch_mode: default_notch_mode(),
             notch_visible: true,
             tray_visible: true,
@@ -147,6 +156,12 @@ pub fn load() -> Config {
         .and_then(|t| serde_json::from_str(&t).ok())
         .unwrap_or_default();
 
+    if !valid_bridge_token(&cfg.bridge_token) {
+        // A random browser-to-localhost CSRF boundary, not an account credential. Processes
+        // running as the same Windows user can already read the provider settings.
+        cfg.bridge_token = uuid::Uuid::new_v4().simple().to_string();
+    }
+
     // Discoverability without surprising anyone. `default_tray_mode` gives a NEW install the
     // numbers icon, but serde applies that same default to an EXISTING config that simply predates
     // the setting — which would silently change the tray icon of everyone who upgrades. So an
@@ -168,7 +183,10 @@ pub fn load() -> Config {
         cfg.tray_slots = cfg
             .tray_providers
             .iter()
-            .map(|p| TraySlot { provider: p.clone(), window: String::new() })
+            .map(|p| TraySlot {
+                provider: p.clone(),
+                window: String::new(),
+            })
             .collect();
     }
 
@@ -178,7 +196,10 @@ pub fn load() -> Config {
         cfg.notch_slots = cfg
             .notch_providers
             .iter()
-            .map(|p| TraySlot { provider: p.clone(), window: String::new() })
+            .map(|p| TraySlot {
+                provider: p.clone(),
+                window: String::new(),
+            })
             .collect();
     }
 

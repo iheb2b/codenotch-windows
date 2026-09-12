@@ -143,10 +143,10 @@ pub fn start(app: AppHandle) {
         pending.retain(|r| {
             if r.exists() && w.watch(r, RecursiveMode::Recursive).is_ok() {
                 watching += 1;
-                wlog(&format!("watching: {}", r.display()));
+                wlog("watching a Claude session source");
                 false
             } else {
-                wlog(&format!("not available yet (retrying every 60 s): {}", r.display()));
+                wlog("a Claude session source is unavailable (retrying every 60 s)");
                 true
             }
         });
@@ -474,9 +474,9 @@ fn evaluate(app: &AppHandle, tracks: &mut HashMap<PathBuf, Trk>) {
 static PUSH_LOGGED: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
 fn push(app: &AppHandle, e: &str, t: &Trk) {
-    // The first 30 pushes go to the log for doctor/troubleshooting (then silence, to keep the log small)
+    // Keep routine logs useful without persisting session identifiers or working-directory paths.
     if PUSH_LOGGED.fetch_add(1, std::sync::atomic::Ordering::Relaxed) < 30 {
-        wlog(&format!("push {} session={} cwd={}", e, t.session, t.cwd));
+        wlog(&format!("push {e}"));
     }
     let ev = HookEvent {
         e: e.to_string(),

@@ -88,7 +88,11 @@ fn persist(s: &UsageSnapshot) {
 pub fn find_executable() -> Option<PathBuf> {
     let mut cands: Vec<PathBuf> = Vec::new();
     if let Some(appdata) = dirs::config_dir() {
-        let pkg = appdata.join("npm").join("node_modules").join("@openai").join("codex");
+        let pkg = appdata
+            .join("npm")
+            .join("node_modules")
+            .join("@openai")
+            .join("codex");
         if let Ok(rd) = std::fs::read_dir(pkg.join("bin")) {
             for e in rd.flatten() {
                 let n = e.file_name().to_string_lossy().to_lowercase();
@@ -167,7 +171,12 @@ fn load_credential() -> Option<Credential> {
                 .as_str()
                 .map(String::from)
         });
-    Some(Credential { access_token, account_id, plan, expired })
+    Some(Credential {
+        access_token,
+        account_id,
+        plan,
+        expired,
+    })
 }
 
 enum LiveErr {
@@ -183,25 +192,27 @@ fn fetch_usage(cred: &Credential) -> Result<serde_json::Value, LiveErr> {
         .set("ChatGPT-Account-Id", &cred.account_id)
         .set("Accept", "application/json")
         .set("Cache-Control", "no-cache, no-store")
-        .set("User-Agent", concat!("codenotch/", env!("CARGO_PKG_VERSION"), " (Windows)"))
+        .set(
+            "User-Agent",
+            concat!("codenotch/", env!("CARGO_PKG_VERSION"), " (Windows)"),
+        )
         .timeout(Duration::from_secs(15))
         .call();
     match resp {
-        Ok(r) => r.into_json().map_err(|e| LiveErr::Other(format!("parse: {e}"))),
-        Err(ureq::Error::Status(code @ (401 | 403), r)) => {
-            // 401 is about the token; 403 can also be an edge node rejecting the user agent — record the status and the start of the body rather than folding both into "please sign in"
-            let head: String = r
-                .into_string()
-                .unwrap_or_default()
-                .chars()
-                .filter(|c| !c.is_control())
-                .take(160)
-                .collect();
-            crate::applog(&format!("codex: usage endpoint HTTP {code}: {head}"));
+        Ok(r) => r
+            .into_json()
+            .map_err(|e| LiveErr::Other(format!("parse: {e}"))),
+        Err(ureq::Error::Status(code @ (401 | 403), _)) => {
+            // Status is enough for diagnostics. Response bodies can contain account-specific
+            // context and therefore never enter Codenotch logs.
+            crate::applog(&format!("codex: usage endpoint HTTP {code}"));
             Err(LiveErr::NeedsAuth)
         }
         Err(ureq::Error::Status(429, r)) => {
-            let ra = r.header("retry-after").and_then(|s| s.trim().parse::<u64>().ok()).unwrap_or(0);
+            let ra = r
+                .header("retry-after")
+                .and_then(|s| s.trim().parse::<u64>().ok())
+                .unwrap_or(0);
             Err(LiveErr::RateLimited(ra.max(BACKOFF_MIN_SECS)))
         }
         Err(ureq::Error::Status(code, _)) => Err(LiveErr::Other(format!("HTTP {code}"))),
@@ -248,9 +259,19 @@ fn num(v: Option<&serde_json::Value>) -> Option<f64> {
 fn windows_from_usage(v: &serde_json::Value) -> Vec<LimitWindow> {
     let now = now_ms();
     let mut out = Vec::new();
-    for (id, key) in [("primary", "primary_window"), ("secondary", "secondary_window")] {
-        let Some(w) = v.pointer(&format!("/rate_limit/{key}")).filter(|x| x.is_object()) else { continue };
-        let Some(pct) = num(w.get("used_percent")) else { continue };
+    for (id, key) in [
+        ("primary", "primary_window"),
+        ("secondary", "secondary_window"),
+    ] {
+        let Some(w) = v
+            .pointer(&format!("/rate_limit/{key}"))
+            .filter(|x| x.is_object())
+        else {
+            continue;
+        };
+        let Some(pct) = num(w.get("used_percent")) else {
+            continue;
+        };
         let resets_at = num(w.get("reset_at"))
             .map(|s| (s * 1000.0) as u64)
             .or_else(|| num(w.get("reset_after_seconds")).map(|s| now + (s * 1000.0) as u64));
@@ -292,7 +313,10 @@ pub fn newest_rollout() -> Option<PathBuf> {
         if let Ok(rd) = std::fs::read_dir(&d) {
             for e in rd.flatten() {
                 let p = e.path();
-                let name = p.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+                let name = p
+                    .file_name()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_default();
                 if !(name.starts_with("rollout-") && name.ends_with(".jsonl")) {
                     continue;
                 }
@@ -309,7 +333,12 @@ pub fn newest_rollout() -> Option<PathBuf> {
 
 fn list_dirs(p: &Path) -> Vec<PathBuf> {
     std::fs::read_dir(p)
-        .map(|rd| rd.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect())
+        .map(|rd| {
+            rd.flatten()
+                .map(|e| e.path())
+                .filter(|p| p.is_dir())
+                .collect()
+        })
         .unwrap_or_default()
 }
 
@@ -322,10 +351,45 @@ pub fn tail_text(path: &Path) -> Option<String> {
     Some(String::from_utf8_lossy(&raw).into_owned())
 }
 
+/// Best-effort model metadata from the newest local Codex rollout. This reads only the bounded
+/// tail already used for quota fallback and returns the explicit model/effort fields; prompt and
+/// response text never leave the parser.
+pub fn latest_model_info() -> Option<(String, String)> {
+    let text = tail_text(&newest_rollout()?)?;
+    for line in text.lines().rev().filter(|line| line.contains("\"model\"")) {
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue;
+        };
+        let payload = value.get("payload").unwrap_or(&value);
+        let Some(model) = payload.get("model").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let model = model.trim();
+        if model.is_empty() || model.len() > 80 {
+            continue;
+        }
+        let effort = payload
+            .get("reasoning_effort")
+            .or_else(|| payload.get("effort"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .chars()
+            .take(24)
+            .collect();
+        return Some((model.chars().take(80).collect(), effort));
+    }
+    None
+}
+
 /// The last rate_limits snapshot at the tail of a rollout → (windows, recorded-at ms, plan)
-pub fn snapshot_from_rollout(text: &str) -> Option<(Vec<LimitWindow>, Option<u64>, Option<String>)> {
+pub fn snapshot_from_rollout(
+    text: &str,
+) -> Option<(Vec<LimitWindow>, Option<u64>, Option<String>)> {
     for line in text.lines().rev().filter(|l| l.contains("rate_limits")) {
-        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else { continue };
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue;
+        };
         // rate_limits may sit at the top level or under payload
         let rl = v
             .get("rate_limits")
@@ -340,8 +404,12 @@ pub fn snapshot_from_rollout(text: &str) -> Option<(Vec<LimitWindow>, Option<u64
         let now = now_ms();
         let mut out = Vec::new();
         for id in ["primary", "secondary"] {
-            let Some(w) = rl.get(id).filter(|x| x.is_object()) else { continue };
-            let Some(pct) = num(w.get("used_percent")) else { continue };
+            let Some(w) = rl.get(id).filter(|x| x.is_object()) else {
+                continue;
+            };
+            let Some(pct) = num(w.get("used_percent")) else {
+                continue;
+            };
             let resets_at = num(w.get("resets_at"))
                 .map(|s| (s * 1000.0) as u64)
                 .or_else(|| num(w.get("resets_in_seconds")).map(|s| now + (s * 1000.0) as u64));
@@ -349,13 +417,17 @@ pub fn snapshot_from_rollout(text: &str) -> Option<(Vec<LimitWindow>, Option<u64
                 id: id.into(),
                 label: label_for(num(w.get("window_minutes")), id),
                 used: (pct / 100.0).clamp(0.0, 1.0),
-                resets_at, ..Default::default()
+                resets_at,
+                ..Default::default()
             });
         }
         if out.is_empty() {
             continue;
         }
-        let plan = rl.get("plan_type").and_then(|x| x.as_str()).map(String::from);
+        let plan = rl
+            .get("plan_type")
+            .and_then(|x| x.as_str())
+            .map(String::from);
         return Some((out, recorded, plan));
     }
     None
@@ -367,7 +439,9 @@ pub fn snapshot_from_rollout(text: &str) -> Option<(Vec<LimitWindow>, Option<u64
 pub fn present() -> bool {
     find_executable().is_some()
         || auth_path().map(|p| p.is_file()).unwrap_or(false)
-        || codex_home().map(|h| h.join("sessions").is_dir()).unwrap_or(false)
+        || codex_home()
+            .map(|h| h.join("sessions").is_dir())
+            .unwrap_or(false)
 }
 
 fn read_once() -> UsageSnapshot {
@@ -379,7 +453,10 @@ fn read_once() -> UsageSnapshot {
     let now = now_ms();
     if held_until > now {
         snap.backoff_until = held_until;
-        live_note = Some(format!("Rate limited — retrying in {}s", (held_until - now) / 1000));
+        live_note = Some(format!(
+            "Rate limited — retrying in {}s",
+            (held_until - now) / 1000
+        ));
     } else {
         match load_credential() {
             None => {
@@ -391,14 +468,23 @@ fn read_once() -> UsageSnapshot {
                 Ok(v) => {
                     let windows = windows_from_usage(&v);
                     if !windows.is_empty() {
-                        let plan = v.get("plan_type").and_then(|x| x.as_str()).map(String::from).or(cred.plan);
+                        let plan = v
+                            .get("plan_type")
+                            .and_then(|x| x.as_str())
+                            .map(String::from)
+                            .or(cred.plan);
                         snap.status = "ok".into();
                         snap.windows = windows;
                         snap.fetched_at = now_ms();
-                        snap.note = plan.map(|p| format!("{} · via Codex", cap(&p))).unwrap_or_default();
+                        snap.note = plan
+                            .map(|p| format!("{} · via Codex", cap(&p)))
+                            .unwrap_or_default();
                         return snap;
                     }
-                    let keys: Vec<String> = v.as_object().map(|o| o.keys().cloned().collect()).unwrap_or_default();
+                    let keys: Vec<String> = v
+                        .as_object()
+                        .map(|o| o.keys().cloned().collect())
+                        .unwrap_or_default();
                     crate::applog(&format!("codex: usage reply has no windows (top-level keys {keys:?}), falling back to the rollout"));
                     live_note = Some("Codex reported no usage windows".into());
                 }
@@ -415,17 +501,24 @@ fn read_once() -> UsageSnapshot {
                     BACKOFF_UNTIL.store(until, std::sync::atomic::Ordering::Relaxed);
                     snap.backoff_until = until;
                     live_note = Some(format!("Rate limited — retrying in {secs}s"));
-                    crate::applog(&format!("codex: usage endpoint returned 429, retrying in {secs}s"));
+                    crate::applog(&format!(
+                        "codex: usage endpoint returned 429, retrying in {secs}s"
+                    ));
                 }
                 Err(LiveErr::Other(e)) => {
-                    crate::applog(&format!("codex: live read failed ({e}), falling back to the rollout"));
+                    crate::applog(&format!(
+                        "codex: live read failed ({e}), falling back to the rollout"
+                    ));
                     live_note = Some(format!("Live read failed ({e})"));
                 }
             },
         }
     }
     // Fallback: rollout
-    match newest_rollout().and_then(|p| tail_text(&p)).and_then(|t| snapshot_from_rollout(&t)) {
+    match newest_rollout()
+        .and_then(|p| tail_text(&p))
+        .and_then(|t| snapshot_from_rollout(&t))
+    {
         Some((windows, recorded, plan)) => {
             let rec = recorded.unwrap_or(0);
             let fresh = rec > 0 && now_ms().saturating_sub(rec) <= CURRENT_FOR_MS;
@@ -482,7 +575,13 @@ pub fn start(app: AppHandle) {
             let _ = app.emit("codex", &snap);
         }
         if !present() {
-            broadcast(&app, UsageSnapshot { status: "absent".into(), ..Default::default() });
+            broadcast(
+                &app,
+                UsageSnapshot {
+                    status: "absent".into(),
+                    ..Default::default()
+                },
+            );
             // Codex is not installed: look again every 10 minutes
             loop {
                 for _ in 0..600 {
@@ -515,10 +614,16 @@ pub fn probe() -> String {
     let auth = match load_credential() {
         Some(c) => format!(
             "auth.json usable{}{}",
-            if c.expired { " (access_token expired)" } else { "" },
+            if c.expired {
+                " (access_token expired)"
+            } else {
+                ""
+            },
             c.plan.map(|p| format!(", plan={p}")).unwrap_or_default()
         ),
-        None if auth_path().map(|p| p.is_file()).unwrap_or(false) => "auth.json present but has no token".to_string(),
+        None if auth_path().map(|p| p.is_file()).unwrap_or(false) => {
+            "auth.json present but has no token".to_string()
+        }
         None => "auth.json not found".to_string(),
     };
     let exe = find_executable();
@@ -532,8 +637,10 @@ pub fn probe() -> String {
         .unwrap_or_else(|| "?".into());
     format!(
         "Codex: {auth} | executable {} | newest rollout {} (modified {})",
-        exe.map(|p| p.display().to_string()).unwrap_or_else(|| "not found".into()),
-        roll.map(|p| p.display().to_string()).unwrap_or_else(|| "none".into()),
+        exe.map(|p| p.display().to_string())
+            .unwrap_or_else(|| "not found".into()),
+        roll.map(|p| p.display().to_string())
+            .unwrap_or_else(|| "none".into()),
         age
     )
 }

@@ -32,7 +32,7 @@ const ANTIGRAVITY_STALE_MS: u64 = 45_000;
 
 #[derive(Clone, Serialize, Debug, PartialEq)]
 pub struct Activity {
-    /// Provider id other than claude: codex / cursor / gemini
+    /// Provider id: claude / codex / cursor / copilot / gemini
     pub provider: String,
     /// busy | waiting | open
     pub state: String,
@@ -519,11 +519,17 @@ fn antigravity_activity() -> Vec<Activity> {
 pub struct Presence {
     cursor: bool,
     codex: bool,
+    copilot: bool,
     gemini: bool,
 }
 
 fn presence() -> Presence {
-    Presence { cursor: crate::cursor::present(), codex: crate::codex::present(), gemini: crate::antigravity::present() }
+    Presence {
+        cursor: crate::cursor::present(),
+        codex: crate::codex::present(),
+        copilot: crate::copilot::present(),
+        gemini: crate::antigravity::present(),
+    }
 }
 
 fn provider_for_process(name: &str) -> Option<&'static str> {
@@ -536,6 +542,8 @@ fn provider_for_process(name: &str) -> Option<&'static str> {
         Some("claude")
     } else if n == "antigravity.exe" || n.starts_with("antigravity ") {
         Some("gemini")
+    } else if n == "githubcopilot.exe" || n == "github copilot.exe" {
+        Some("copilot")
     } else {
         None
     }
@@ -551,11 +559,17 @@ fn add_open_providers(all: &mut Vec<Activity>, p: Presence) {
         if let Some(provider) = provider_for_process(name) {
             open.insert(provider);
         }
+        // VS Code is a Copilot surface only after an extension/CLI/app presence check succeeds;
+        // Code.exe alone must never make Copilot appear installed.
+        if p.copilot && name == "code.exe" {
+            open.insert("copilot");
+        }
     }
     for (id, installed, label) in [
         ("claude", true, "Claude"),
         ("codex", p.codex, "Codex"),
         ("cursor", p.cursor, "Cursor"),
+        ("copilot", p.copilot, "GitHub Copilot"),
         ("gemini", p.gemini, "Antigravity"),
     ] {
         if installed && open.contains(id) && !all.iter().any(|a| a.provider == id) {
@@ -600,6 +614,8 @@ mod tests {
         assert_eq!(provider_for_process("claude.exe"), Some("claude"));
         assert_eq!(provider_for_process("cursor.exe"), Some("cursor"));
         assert_eq!(provider_for_process("antigravity.exe"), Some("gemini"));
+        assert_eq!(provider_for_process("GitHubCopilot.exe"), Some("copilot"));
+        assert_eq!(provider_for_process("Code.exe"), None);
         assert_eq!(provider_for_process("codenotch.exe"), None);
         assert_eq!(provider_for_process("chatgpt.exe"), None);
         assert_eq!(provider_for_process("codex-command-runner-0.1.exe"), None);
@@ -666,10 +682,16 @@ pub fn start(app: AppHandle) {
             tick = tick.wrapping_add(1);
             let found = read_all(pres, &mut ctx);
             if found != last {
-                // Log the first 20 state changes (with the Codex raw material) so thresholds can be calibrated
+                // Log only provider states; detailed probes may contain local rollout paths.
                 static LOGGED: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
                 if LOGGED.fetch_add(1, std::sync::atomic::Ordering::Relaxed) < 20 {
-                    crate::applog(&format!("activity: {:?} | {}", found.iter().map(|a| format!("{}:{}", a.provider, a.state)).collect::<Vec<_>>(), probe()));
+                    crate::applog(&format!(
+                        "activity: {:?}",
+                        found
+                            .iter()
+                            .map(|a| format!("{}:{}", a.provider, a.state))
+                            .collect::<Vec<_>>()
+                    ));
                 }
                 last = found.clone();
                 {

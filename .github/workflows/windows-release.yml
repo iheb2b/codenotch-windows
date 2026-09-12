@@ -11,24 +11,67 @@ on:
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build:
-    name: Windows x64
-    runs-on: windows-latest
+  security:
+    name: Dependency and workflow audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      checks: write
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Audit Rust dependencies
+        uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Go for actionlint
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: stable
+          cache: false
+
+      - name: Install actionlint
+        run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+
+      - name: Lint GitHub Actions workflows
+        run: "$(go env GOPATH)/bin/actionlint"
+
+      - name: Scan tracked source for credential patterns
+        shell: bash
+        run: |
+          pattern='gh[pousr]_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----|Bearer[[:space:]]+[A-Za-z0-9._~+/=-]{20,}'
+          if git grep -n -I -E "$pattern" -- . ':(exclude)Cargo.lock'; then
+            echo 'Credential-like text was found in tracked source.' >&2
+            exit 1
+          fi
+
+  build:
+    name: Windows x64
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         with:
           components: clippy
 
       - name: Cache Rust build files
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
 
       - name: Test
         shell: pwsh
@@ -46,6 +89,18 @@ jobs:
       - name: Check code
         run: cargo clippy --all-targets --locked
 
+      - name: Verify tagged release version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $expected = $env:GITHUB_REF_NAME -replace '^v', ''
+          $metadata = cargo metadata --locked --no-deps --format-version 1 | ConvertFrom-Json
+          $versions = @($metadata.packages | ForEach-Object { $_.version } | Sort-Object -Unique)
+          $tauriVersion = (Get-Content codenotch/tauri.conf.json -Raw | ConvertFrom-Json).version
+          if ($versions.Count -ne 1 -or $versions[0] -ne $expected -or $tauriVersion -ne $expected) {
+            throw "Tag $env:GITHUB_REF_NAME does not match Cargo versions '$($versions -join ', ')' and Tauri version '$tauriVersion'."
+          }
+
       - name: Build release executables
         run: cargo build --release --locked
 
@@ -58,9 +113,13 @@ jobs:
           Compress-Archive -Path dist/Codenotch.exe,dist/Codenotch-Hook.exe -DestinationPath dist/Codenotch-Windows-x64.zip
           $hash = (Get-FileHash dist/Codenotch-Windows-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  Codenotch-Windows-x64.zip" | Set-Content -Encoding ascii dist/Codenotch-Windows-x64.zip.sha256
+          @('Codenotch.exe', 'Codenotch-Hook.exe', 'Codenotch-Windows-x64.zip') | ForEach-Object {
+            $itemHash = (Get-FileHash "dist/$_" -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$itemHash  $_"
+          } | Set-Content -Encoding ascii dist/SHA256SUMS.txt
 
       - name: Upload downloadable build
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: Codenotch-Windows-x64
           path: |
@@ -68,10 +127,26 @@ jobs:
             dist/Codenotch-Hook.exe
             dist/Codenotch-Windows-x64.zip
             dist/Codenotch-Windows-x64.zip.sha256
+            dist/SHA256SUMS.txt
           if-no-files-found: error
 
+  release:
+    name: Publish tagged release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [security, build]
+    runs-on: windows-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download verified Windows build
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: Codenotch-Windows-x64
+          path: dist
+
       - name: Publish tagged GitHub release
-        if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -81,5 +156,6 @@ jobs:
             dist/Codenotch-Hook.exe `
             dist/Codenotch-Windows-x64.zip `
             dist/Codenotch-Windows-x64.zip.sha256 `
+            dist/SHA256SUMS.txt `
             --title "Codenotch for Windows ${{ github.ref_name }}" `
             --generate-notes

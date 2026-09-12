@@ -313,6 +313,12 @@ pub fn focus_provider(provider: &str) -> bool {
     let matches = |name: &str, title: &str| match provider.as_str() {
         "codex" => name == "chatgpt.exe" || name == "codex.exe" || title.contains("codex"),
         "cursor" => name.contains("cursor") || title.contains("cursor"),
+        "copilot" => {
+            name == "githubcopilot.exe"
+                || name == "github copilot.exe"
+                || name == "code.exe"
+                || title.contains("copilot")
+        }
         "gemini" => name.contains("antigravity") || title.contains("antigravity"),
         "claude" => name.contains("claude") || title.contains("claude"),
         _ => false,

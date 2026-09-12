@@ -1,6 +1,8 @@
 //! codenotch-hook: the minimal client Claude Code's hooks call.
-//! Duties: 1) report the event plus stdin JSON to the main app; 2) launch the main app if it is not running.
-//! Iron rule: never block Claude Code — ~2 s total budget, and every failure exits 0 silently.
+//! Duties: 1) report activity plus stdin JSON to the main app; 2) for Claude Code's documented
+//! PermissionRequest hook, wait for one explicit one-shot decision; 3) launch the app if needed.
+//! Failures never approve anything: a failed/timed-out relay prints no decision, leaving Claude's
+//! own permission UI in charge.
 
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -8,6 +10,8 @@ use std::time::Duration;
 
 const DEFAULT_PORT: u16 = 48666;
 const MAX_STDIN: u64 = 256 * 1024;
+const ALLOW_OUTPUT: &str = r#"{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}"#;
+const DENY_OUTPUT: &str = r#"{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny"}}}"#;
 
 fn main() {
     let event = std::env::args().nth(1).unwrap_or_else(|| "ping".into());
@@ -16,66 +20,169 @@ fn main() {
     let mut body = String::new();
     let _ = std::io::stdin().take(MAX_STDIN).read_to_string(&mut body);
 
-    let port = read_port();
+    let (mut port, mut token) = read_config();
     let ppid = parent_pid();
 
-    if send(port, &event, ppid, &body).is_ok() {
+    if event == "approval-claude" {
+        approval(port, token, ppid, &body);
+        return;
+    }
+
+    if send(port, &token, &event, ppid, &body).is_ok() {
         return;
     }
     // Main app not running: launch it detached, then retry briefly
     spawn_main();
     for _ in 0..20 {
         std::thread::sleep(Duration::from_millis(100));
-        if send(port, &event, ppid, &body).is_ok() {
+        (port, token) = read_config();
+        if send(port, &token, &event, ppid, &body).is_ok() {
             return;
         }
     }
     // Give up quietly — never affect Claude Code
 }
 
-/// Pulls "port": N out of %APPDATA%\codenotch\config.json (hand-rolled scan, no dependency)
-fn read_port() -> u16 {
+/// Pulls two primitive fields out of config.json without adding a JSON dependency to this tiny
+/// sidecar. The token contains lowercase hex only, by construction.
+fn read_config() -> (u16, String) {
     let path = match std::env::var("APPDATA") {
         Ok(a) => format!("{a}\\codenotch\\config.json"),
-        Err(_) => return DEFAULT_PORT,
+        Err(_) => return (DEFAULT_PORT, String::new()),
     };
     let Ok(txt) = std::fs::read_to_string(path) else {
-        return DEFAULT_PORT;
+        return (DEFAULT_PORT, String::new());
     };
+    let mut port = DEFAULT_PORT;
     if let Some(i) = txt.find("\"port\"") {
         let digits: String = txt[i + 6..]
             .chars()
             .skip_while(|c| !c.is_ascii_digit())
             .take_while(|c| c.is_ascii_digit())
             .collect();
-        if let Ok(p) = digits.parse() {
-            return p;
-        }
+        port = digits.parse().unwrap_or(DEFAULT_PORT);
     }
-    DEFAULT_PORT
+    let token = string_field(&txt, "bridge_token");
+    let token = if token.len() == 32 && token.bytes().all(|b| b.is_ascii_hexdigit()) {
+        token
+    } else {
+        String::new()
+    };
+    (port, token)
 }
 
-fn send(port: u16, event: &str, ppid: u32, body: &str) -> std::io::Result<()> {
+fn string_field(txt: &str, key: &str) -> String {
+    let needle = format!("\"{key}\"");
+    let Some(i) = txt.find(&needle) else {
+        return String::new();
+    };
+    let tail = &txt[i + needle.len()..];
+    let Some(colon) = tail.find(':') else {
+        return String::new();
+    };
+    let tail = tail[colon + 1..].trim_start();
+    let Some(tail) = tail.strip_prefix('"') else {
+        return String::new();
+    };
+    tail.chars().take_while(|c| *c != '"').collect()
+}
+
+fn send(port: u16, token: &str, event: &str, ppid: u32, body: &str) -> std::io::Result<()> {
+    let path = format!("/event?e={event}&ppid={ppid}");
+    request(port, token, "POST", &path, body).map(|_| ())
+}
+
+fn request(
+    port: u16,
+    token: &str,
+    method: &str,
+    path: &str,
+    body: &str,
+) -> std::io::Result<String> {
     let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
     let mut s = TcpStream::connect_timeout(&addr, Duration::from_millis(300))?;
     s.set_write_timeout(Some(Duration::from_millis(700)))?;
     s.set_read_timeout(Some(Duration::from_millis(700)))?;
     let req = format!(
-        "POST /event?e={}&ppid={} HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-        event,
-        ppid,
-        body.len(),
-        body
+        "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nX-Codenotch-Token: {token}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.as_bytes().len(),
     );
     s.write_all(req.as_bytes())?;
-    let mut buf = [0u8; 64];
-    let _ = s.read(&mut buf); // wait for a response fragment to confirm delivery; failure does not matter
-    Ok(())
+    let mut reply = String::new();
+    s.take(16 * 1024).read_to_string(&mut reply)?;
+    let status = reply
+        .lines()
+        .next()
+        .and_then(|line| line.split_whitespace().nth(1))
+        .and_then(|code| code.parse::<u16>().ok())
+        .unwrap_or(0);
+    if !(200..300).contains(&status) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            format!("local bridge returned HTTP {status}"),
+        ));
+    }
+    Ok(reply
+        .split("\r\n\r\n")
+        .nth(1)
+        .unwrap_or("")
+        .trim()
+        .to_string())
+}
+
+fn approval(mut port: u16, mut token: String, ppid: u32, body: &str) {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let id = format!("claude-{}-{now}", std::process::id());
+    let path = format!("/approval?provider=claude&id={id}&ppid={ppid}");
+    let mut queued = token.len() >= 32
+        && request(port, &token, "POST", &path, body).ok().as_deref() == Some("queued");
+    if !queued {
+        spawn_main();
+        for _ in 0..20 {
+            std::thread::sleep(Duration::from_millis(100));
+            (port, token) = read_config();
+            if token.len() >= 32
+                && request(port, &token, "POST", &path, body).ok().as_deref() == Some("queued")
+            {
+                queued = true;
+                break;
+            }
+        }
+    }
+    if !queued {
+        return;
+    }
+    let result_path = format!("/approval-result?id={id}");
+    for _ in 0..460 {
+        std::thread::sleep(Duration::from_millis(250));
+        match request(port, &token, "GET", &result_path, "")
+            .ok()
+            .as_deref()
+        {
+            Some("allow") => {
+                println!("{ALLOW_OUTPUT}");
+                return;
+            }
+            Some("deny") => {
+                println!("{DENY_OUTPUT}");
+                return;
+            }
+            // Print no decision: Claude Code proceeds to its own full permission dialog.
+            Some("review") => return,
+            Some("gone") => return,
+            _ => {}
+        }
+    }
 }
 
 /// Launches the main app detached: no inherited handles, no window, never waits
 fn spawn_main() {
-    let Ok(me) = std::env::current_exe() else { return };
+    let Ok(me) = std::env::current_exe() else {
+        return;
+    };
     let Some(dir) = me.parent() else { return };
     let exe = dir.join("codenotch.exe");
     if !exe.exists() {
@@ -120,13 +227,8 @@ fn parent_pid() -> u32 {
         let mut pbi = std::mem::zeroed::<Pbi>();
         let mut ret = 0u32;
         // -1 = GetCurrentProcess()
-        if NtQueryInformationProcess(
-            -1,
-            0,
-            &mut pbi,
-            std::mem::size_of::<Pbi>() as u32,
-            &mut ret,
-        ) == 0
+        if NtQueryInformationProcess(-1, 0, &mut pbi, std::mem::size_of::<Pbi>() as u32, &mut ret)
+            == 0
         {
             return pbi.inherited_from_unique_process_id as u32;
         }

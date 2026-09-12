@@ -763,7 +763,8 @@ fn set_notch_slots(app: AppHandle, slots: Vec<config::TraySlot>) {
 #[tauri::command]
 fn get_notch_mode(app: AppHandle) -> String {
     let st = app.state::<AppState>();
-    st.cfg.lock().unwrap().notch_mode.clone()
+    let mode = st.cfg.lock().unwrap().notch_mode.clone();
+    mode
 }
 
 #[tauri::command]

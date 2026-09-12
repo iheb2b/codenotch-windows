@@ -31,7 +31,17 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Test
-        run: cargo test --locked
+        shell: pwsh
+        run: |
+          $lines = & cargo test --locked 2>&1
+          $exitCode = $LASTEXITCODE
+          $lines | ForEach-Object { Write-Host $_ }
+          if ($exitCode -ne 0) {
+            $excerpt = ($lines | Select-Object -Last 60) -join "`n"
+            $excerpt = $excerpt.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Host "::error title=Cargo test failed::$excerpt"
+            exit $exitCode
+          }
 
       - name: Check code
         run: cargo clippy --all-targets --locked

@@ -1,6 +1,13 @@
 # Codenotch for Windows
 
 [![Build Windows app](https://github.com/iheb2b/codenotch-windows/actions/workflows/windows-release.yml/badge.svg)](https://github.com/iheb2b/codenotch-windows/actions/workflows/windows-release.yml)
+[![Latest release](https://img.shields.io/github/v/release/iheb2b/codenotch-windows?display_name=tag&sort=semver)](https://github.com/iheb2b/codenotch-windows/releases/latest)
+
+[![Download Codenotch for Windows](https://img.shields.io/badge/Download-Codenotch%20for%20Windows-0078D4?style=for-the-badge&logo=windows11&logoColor=white)](https://github.com/iheb2b/codenotch-windows/releases/latest/download/Codenotch-Windows-x64.zip)
+
+**Windows 10/11 · x64 · Portable ZIP**
+
+[Release notes](https://github.com/iheb2b/codenotch-windows/releases/latest) · [SHA-256 checksum](https://github.com/iheb2b/codenotch-windows/releases/latest/download/Codenotch-Windows-x64.zip.sha256)
 
 A Windows port of [Codenotch](https://github.com/vinzdg/codenotch) — the usage notch that
 sits on the edge of your screen and answers three questions at a glance:
@@ -65,9 +72,12 @@ persisted readings, and icon overrides live in `%APPDATA%\codenotch`.
 
 ## Download a Windows build
 
-Open **Actions → Build Windows app**, choose the latest successful run, and download
-`Codenotch-Windows-x64`. Tagged versions are also published on the repository's
-**Releases** page with a SHA-256 checksum.
+Click **Download Codenotch for Windows** at the top of this page. The button always downloads the
+Windows x64 ZIP from the latest stable GitHub release, so it does not need to change when a new
+version is published. Extract the ZIP and run `Codenotch.exe`.
+
+Every release also includes the standalone executables, release notes, and SHA-256 checksums on the
+[Releases page](https://github.com/iheb2b/codenotch-windows/releases/latest).
 
 ### Icons
 

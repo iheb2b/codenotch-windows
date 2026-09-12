@@ -3,11 +3,11 @@
 [![Build Windows app](https://github.com/iheb2b/codenotch-windows/actions/workflows/windows-release.yml/badge.svg)](https://github.com/iheb2b/codenotch-windows/actions/workflows/windows-release.yml)
 [![Latest release](https://img.shields.io/github/v/release/iheb2b/codenotch-windows?display_name=tag&sort=semver)](https://github.com/iheb2b/codenotch-windows/releases/latest)
 
-[![Download Codenotch for Windows](https://img.shields.io/badge/Download-Codenotch%20for%20Windows-0078D4?style=for-the-badge&logo=windows11&logoColor=white)](https://github.com/iheb2b/codenotch-windows/releases/latest/download/Codenotch-Windows-x64.zip)
+[![Download Codenotch for Windows](https://img.shields.io/badge/Download-Codenotch%20for%20Windows-0078D4?style=for-the-badge&logo=windows11&logoColor=white)](https://github.com/iheb2b/codenotch-windows/releases/latest/download/Codenotch.exe)
 
-**Windows 10/11 · x64 · Portable ZIP**
+**Windows 10/11 · x64 · Portable EXE**
 
-[Release notes](https://github.com/iheb2b/codenotch-windows/releases/latest) · [SHA-256 checksum](https://github.com/iheb2b/codenotch-windows/releases/latest/download/Codenotch-Windows-x64.zip.sha256)
+[Release notes](https://github.com/iheb2b/codenotch-windows/releases/latest) · [SHA-256 checksums](https://github.com/iheb2b/codenotch-windows/releases/latest/download/SHA256SUMS.txt)
 
 A Windows port of [Codenotch](https://github.com/vinzdg/codenotch) — the usage notch that
 sits on the edge of your screen and answers three questions at a glance:
@@ -73,8 +73,8 @@ persisted readings, and icon overrides live in `%APPDATA%\codenotch`.
 ## Download a Windows build
 
 Click **Download Codenotch for Windows** at the top of this page. The button always downloads the
-Windows x64 ZIP from the latest stable GitHub release, so it does not need to change when a new
-version is published. Extract the ZIP and run `Codenotch.exe`.
+standalone `Codenotch.exe` from the latest stable GitHub release, so it does not need to change when
+a new version is published. Run the downloaded executable directly; no ZIP extraction is required.
 
 Every release also includes the standalone executables, release notes, and SHA-256 checksums on the
 [Releases page](https://github.com/iheb2b/codenotch-windows/releases/latest).

@@ -4,14 +4,15 @@
 <meta charset="UTF-8">
 <title>Codenotch Settings</title>
 <style>
-  /* Same visual language as notch.html: near-black panels, #1e1e1e rules, Segoe UI, muted greys.
-     The only saturated colours are the three usage bands the tray icon itself draws
-     (trayicon.rs band_color): under 50% green, under 80% yellow, else red. Nothing else is
-     coloured — no accent, no gradient, no shadow. */
+  /* The settings window uses the denser "regular glass" surface from notch.html: translucent
+     enough to feel spatial, but calm enough for labels and controls to stay readable. */
   *{box-sizing:border-box}
   html,body{margin:0;padding:0;height:100%}
   body{
-    background:#0a0a0a;color:#fff;font-family:"Segoe UI",system-ui,sans-serif;font-size:13px;
+    background:
+      radial-gradient(90% 80% at 10% -10%,rgba(68,96,148,.24),transparent 55%),
+      radial-gradient(80% 70% at 105% 110%,rgba(109,74,164,.18),transparent 58%),
+      #090c12;color:#fff;font-family:"Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;font-size:13px;
     overflow:hidden;user-select:none;
   }
 
@@ -22,7 +23,8 @@
   #shell{display:flex;height:100%;min-height:0}
 
   #side{
-    flex:0 0 150px;width:150px;min-width:150px;background:#0d0d0d;border-right:1px solid #1e1e1e;
+    flex:0 0 150px;width:150px;min-width:150px;background:rgba(18,23,32,.66);border-right:1px solid rgba(255,255,255,.12);
+    box-shadow:inset -1px 0 0 rgba(0,0,0,.18);backdrop-filter:blur(24px) saturate(145%);
     overflow-y:auto;overflow-x:hidden;padding:14px 8px 20px;
   }
   .s-group{
@@ -32,14 +34,14 @@
   .s-group.first{padding-top:0}
   .tab{
     display:block;width:100%;text-align:left;background:none;border:1px solid transparent;
-    border-radius:8px;color:#b0b0b3;font:inherit;font-size:12.5px;padding:7px 9px;cursor:pointer;
+    border-radius:999px;color:#adb5c1;font:inherit;font-size:12.5px;padding:8px 11px;cursor:pointer;
     margin-bottom:2px;
   }
-  .tab:hover{background:#141414;color:#e8e8ea}
-  .tab.on{background:#1c1c1c;border-color:#2e2e2e;color:#fff;font-weight:600}
+  .tab:hover{background:rgba(255,255,255,.07);color:#f0f2f5}
+  .tab.on{background:linear-gradient(145deg,rgba(255,255,255,.18),rgba(255,255,255,.08));border-color:rgba(255,255,255,.17);box-shadow:inset 0 1px 0 rgba(255,255,255,.08);color:#fff;font-weight:600}
   .tab:focus-visible{outline:1px solid #8a8a8a;outline-offset:-1px}
 
-  #main{flex:1 1 auto;min-width:0;overflow-y:auto;overflow-x:hidden;padding:16px 18px 30px}
+  #main{flex:1 1 auto;min-width:0;overflow-y:auto;overflow-x:hidden;padding:20px 20px 30px}
 
   /* Error strip — every failed command lands here instead of throwing */
   #strip{
@@ -54,8 +56,8 @@
   .p-title{font-size:16px;font-weight:700;color:#fff;margin:0}
   .p-lede{font-size:11px;color:#808080;margin:4px 0 0;line-height:1.5}
 
-  .block{border-top:1px solid #1e1e1e;margin-top:20px;padding-top:16px}
-  .block.first{border-top:none;margin-top:16px;padding-top:0}
+  .block{border:1px solid rgba(255,255,255,.12);margin-top:14px;padding:14px 15px;border-radius:20px;background:linear-gradient(145deg,rgba(255,255,255,.085),rgba(255,255,255,.025));box-shadow:inset 0 1px 0 rgba(255,255,255,.055),0 12px 30px rgba(0,0,0,.12)}
+  .block.first{border:1px solid rgba(255,255,255,.12);margin-top:16px;padding:14px 15px}
   .b-head{font-size:13px;font-weight:700;color:#e8e8ea}
   .b-sub{font-size:11px;color:#808080;margin-top:3px;line-height:1.5}
 
@@ -67,39 +69,40 @@
 
   /* A setting: words on the left, the control on the right */
   .row{display:flex;align-items:flex-start;gap:14px;padding:11px 0}
-  .row + .row{border-top:1px solid #161616}
+  .row + .row{border-top:1px solid rgba(255,255,255,.075)}
   .r-text{flex:1 1 auto;min-width:0}
   .r-name{font-size:12.5px;color:#e8e8ea;font-weight:600}
   .r-why{font-size:11px;color:#808080;margin-top:3px;line-height:1.5;overflow-wrap:anywhere}
   .r-ctl{flex:0 0 auto;margin-top:2px}
 
-  /* Real switches, not checkboxes. Greyscale only: pale track when on, dark when off. */
+  /* Real switches, not checkboxes. The on state uses the familiar system green. */
   .sw{
-    position:relative;width:40px;height:22px;border-radius:11px;background:#242424;
-    border:1px solid #2e2e2e;padding:0;cursor:pointer;transition:background .15s,border-color .15s;
+    position:relative;width:42px;height:24px;border-radius:999px;background:rgba(255,255,255,.12);
+    border:1px solid rgba(255,255,255,.14);padding:0;cursor:pointer;transition:background .24s,border-color .24s,box-shadow .24s;
   }
   .sw .knob{
-    position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:8px;background:#6a6a6a;
-    transition:left .15s,background .15s;
+    position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:linear-gradient(145deg,#fff,#c8cdd5);box-shadow:0 2px 6px rgba(0,0,0,.38);
+    transition:left .28s cubic-bezier(.16,1,.3,1),background .2s;
   }
-  .sw:hover{border-color:#3f3f3f}
-  .sw[aria-checked="true"]{background:#c8c8c8;border-color:#c8c8c8}
-  .sw[aria-checked="true"] .knob{left:20px;background:#0a0a0a}
+  .sw:hover{border-color:rgba(255,255,255,.28)}
+  .sw[aria-checked="true"]{background:#34c759;border-color:rgba(105,255,139,.55);box-shadow:0 0 16px rgba(52,199,89,.12)}
+  .sw[aria-checked="true"] .knob{left:20px;background:#fff}
   .sw[disabled]{opacity:.45;cursor:default}
   .sw:focus-visible{outline:1px solid #8a8a8a;outline-offset:2px}
 
   select{
-    background:#0a0a0a;border:1px solid #2e2e2e;border-radius:9px;color:#e8e8ea;font:inherit;
+    background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.15);border-radius:999px;color:#e8e8ea;font:inherit;
     font-size:12px;padding:6px 8px;max-width:100%;cursor:pointer;
   }
-  select:hover{border-color:#3f3f3f}
+  select:hover{border-color:rgba(255,255,255,.28)}
   select:focus-visible{outline:1px solid #8a8a8a;outline-offset:1px}
 
   .btn{
-    background:#0a0a0a;border:1px solid #2e2e2e;border-radius:9px;color:#e8e8ea;font:inherit;
+    background:linear-gradient(145deg,rgba(255,255,255,.12),rgba(255,255,255,.05));border:1px solid rgba(255,255,255,.17);border-radius:999px;color:#e8e8ea;font:inherit;
     font-size:12px;padding:7px 12px;cursor:pointer;
   }
-  .btn:hover{border-color:#3f3f3f;background:#141414}
+  .btn:hover{border-color:rgba(255,255,255,.29);background:rgba(255,255,255,.15)}
+  .btn:active{transform:scale(.97)}
   .btn:focus-visible{outline:1px solid #8a8a8a;outline-offset:1px}
 
   /* A correction from Rust: what was asked for was not what was stored */
@@ -112,11 +115,11 @@
   /* ---- taskbar icon editor (unchanged behaviour) --------------------------------------- */
   .modes{display:flex;gap:6px;margin-top:12px;flex-wrap:wrap}
   .mode{
-    flex:1 1 0;min-width:88px;background:#0a0a0a;border:1px solid #2e2e2e;border-radius:10px;
+    flex:1 1 0;min-width:88px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.12);border-radius:16px;
     color:#b0b0b3;font:inherit;font-size:12px;padding:8px 6px;cursor:pointer;text-align:center;
   }
-  .mode:hover{border-color:#3f3f3f;color:#e8e8ea}
-  .mode.on{background:#1c1c1c;border-color:#6a6a6a;color:#fff;font-weight:600}
+  .mode:hover{border-color:rgba(255,255,255,.27);color:#e8e8ea}
+  .mode.on{background:linear-gradient(145deg,rgba(255,255,255,.17),rgba(255,255,255,.07));border-color:rgba(255,255,255,.29);box-shadow:inset 0 1px 0 rgba(255,255,255,.08);color:#fff;font-weight:600}
   .mode-sub{display:block;font-size:10px;color:#808080;font-weight:400;margin-top:2px}
   .mode.on .mode-sub{color:#a0a0a3}
 
@@ -124,7 +127,7 @@
   .previewrow{display:flex;gap:14px;align-items:flex-start;margin-top:14px;flex-wrap:wrap}
   #canvas{
     position:relative;width:192px;height:192px;flex:0 0 auto;border-radius:10px;overflow:hidden;
-    border:1px solid #1e1e1e;
+    border:1px solid rgba(255,255,255,.13);box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
     /* Faint checker so transparent pixels read as transparent, not as black */
     background-color:#141414;
     background-image:
@@ -170,11 +173,11 @@
   /* Slot chips — the same slots as the overlay regions, reachable when the window is narrow */
   .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}
   .chip{
-    display:flex;align-items:center;gap:6px;background:#0a0a0a;border:1px solid #2e2e2e;border-radius:9px;
+    display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.12);border-radius:999px;
     padding:6px 8px;color:#b0b0b3;font:inherit;font-size:11px;cursor:pointer;max-width:100%;min-width:0;
   }
-  .chip:hover{border-color:#3f3f3f;color:#e8e8ea}
-  .chip.on{border-color:#8a8a8a;background:#1c1c1c;color:#fff}
+  .chip:hover{border-color:rgba(255,255,255,.27);color:#e8e8ea}
+  .chip.on{border-color:rgba(255,255,255,.30);background:rgba(255,255,255,.12);color:#fff}
   .chip b{font-weight:700;white-space:nowrap}
   .chip .ctext{color:#808080;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
   .chip.on .ctext{color:#c8c8c8}
@@ -200,12 +203,12 @@
   .p-status{font-size:10px;color:#808080;margin-left:auto;white-space:nowrap}
   .p-status.warn{color:#facc15}
   .p-item{
-    display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:#0a0a0a;
-    border:1px solid #1a1a1a;border-radius:9px;padding:7px 9px;margin-bottom:4px;color:#e8e8ea;
+    display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:rgba(255,255,255,.035);
+    border:1px solid rgba(255,255,255,.085);border-radius:14px;padding:8px 10px;margin-bottom:5px;color:#e8e8ea;
     font:inherit;font-size:12px;cursor:pointer;min-width:0;
   }
-  .p-item:hover{border-color:#3f3f3f;background:#141414}
-  .p-item.on{border-color:#8a8a8a;background:#1c1c1c}
+  .p-item:hover{border-color:rgba(255,255,255,.24);background:rgba(255,255,255,.08)}
+  .p-item.on{border-color:rgba(255,255,255,.29);background:rgba(255,255,255,.12)}
   .p-item:focus-visible{outline:1px solid #8a8a8a;outline-offset:1px}
   .p-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
   .p-any{color:#c8c8c8;font-style:italic}
@@ -225,9 +228,9 @@
 
   /* Notch size */
   .c-scale{display:flex;align-items:center;gap:10px;margin-top:12px}
-  .c-scale input[type=range]{-webkit-appearance:none;appearance:none;flex:1;min-width:0;height:3px;border-radius:2px;background:#2d2d2d;outline:none}
-  .c-scale input[type=range]::-webkit-slider-runnable-track{height:3px;border-radius:2px;background:#2d2d2d}
-  .c-scale input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:12px;height:12px;margin-top:-4.5px;border-radius:50%;background:#8a8a8a;cursor:pointer}
+  .c-scale input[type=range]{-webkit-appearance:none;appearance:none;flex:1;min-width:0;height:4px;border-radius:999px;background:rgba(255,255,255,.14);outline:none}
+  .c-scale input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:999px;background:rgba(255,255,255,.14)}
+  .c-scale input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;margin-top:-5px;border-radius:50%;background:linear-gradient(145deg,#fff,#b8c0cc);border:1px solid rgba(255,255,255,.60);box-shadow:0 2px 7px rgba(0,0,0,.35);cursor:pointer}
   .c-scale input[type=range]:hover::-webkit-slider-thumb{background:#b0b0b3}
   .c-scale-val{font-size:11px;color:#c8c8c8;min-width:38px;text-align:right;font-variant-numeric:tabular-nums}
 
@@ -244,10 +247,15 @@
 
   /* Quiet "Saved" confirmation */
   #toast{
-    position:fixed;right:14px;bottom:12px;background:#1c1c1c;border:1px solid #2e2e2e;border-radius:9px;
-    padding:5px 10px;font-size:11px;color:#c8c8c8;opacity:0;transition:opacity .35s ease;pointer-events:none;
+    position:fixed;right:14px;bottom:12px;background:rgba(36,42,52,.78);border:1px solid rgba(255,255,255,.18);border-radius:999px;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.09),0 10px 26px rgba(0,0,0,.25);backdrop-filter:blur(18px) saturate(145%);padding:6px 12px;font-size:11px;color:#e5e8ec;opacity:0;transition:opacity .35s ease;pointer-events:none;
   }
   #toast.show{opacity:1}
+  @media (prefers-reduced-transparency:reduce){
+    body{background:#0b0e14}#side{background:#121720;backdrop-filter:none}.block{background:#151a22}#toast{background:#242a34;backdrop-filter:none}
+  }
+  @media (forced-colors:active){#side,.block,.tab,.sw,select,.btn,.mode,.chip,.p-item{forced-color-adjust:auto}}
+  @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}}
 </style>
 </head>
 <body>
@@ -311,8 +319,18 @@
       <p class="p-lede">The small black pill that floats against the right-hand edge of the screen. Each tool you tick gets one ring on it.</p>
 
       <div class="block first">
+        <div class="b-head">Visibility</div>
+        <div class="b-sub">Smart shows tools that are open, working, or waiting for you. Pinned keeps your selected tools visible. All shows every available tool.</div>
+        <div class="modes" id="notch-modes">
+          <button class="mode" data-nm="smart">Smart<span class="mode-sub">open or active</span></button>
+          <button class="mode" data-nm="pinned">Pinned<span class="mode-sub">your selection</span></button>
+          <button class="mode" data-nm="all">All<span class="mode-sub">every tool</span></button>
+        </div>
+      </div>
+
+      <div class="block">
         <div class="b-head">What appears on the pill</div>
-        <div class="b-sub">Click a name to switch its ring on or off. The list underneath each name chooses which usage window that ring counts.</div>
+        <div class="b-sub">These are the tools Smart may show and Pinned always shows. The list under each name selects the usage window counted by its ring.</div>
         <div class="np-list" id="notch-list"></div>
         <div class="c-note dim" id="notch-note" style="margin-top:6px"></div>
       </div>
@@ -465,6 +483,7 @@
    leaving a half-rendered window.
 --------------------------------------------------------------------------- */
 
+const SETTINGS_PREVIEW=!window.__TAURI__&&new URLSearchParams(location.search).get('preview')==='1';
 const BRIDGE = (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) || null;
 function invoke(cmd, args){
   if(!BRIDGE) return Promise.reject(new Error('the app bridge is not available'));
@@ -474,6 +493,7 @@ function errText(e){ return (e && (e.message || e.toString())) || String(e); }
 /* Every command goes through here: a rejection shows in the strip and resolves to a fallback,
    so no caller ever has to deal with an exception. */
 function call(cmd, args, fallback){
+  if(SETTINGS_PREVIEW) return Promise.resolve(fallback);
   return invoke(cmd, args).catch(e => { strip(cmd + ' failed: ' + errText(e)); return fallback; });
 }
 
@@ -1028,6 +1048,11 @@ document.getElementById('picker').addEventListener('click', e => {
    default, and the behaviour Codenotch has always had. An empty `window` on a slot means the same
    fullest rule for that one provider. */
 let notchSlots = [];       // exactly what is stored: [] = all of them, all on "fullest"
+let notchMode = 'smart';
+
+function renderNotchMode(){
+  document.querySelectorAll('#notch-modes [data-nm]').forEach(b => b.classList.toggle('on', b.dataset.nm === notchMode));
+}
 
 /* The effective slots, resolved against the providers that actually exist. A saved list that
    matches none of them is treated as "all" — the same fallback notch.html makes — so the pill is
@@ -1044,6 +1069,7 @@ function notchSlotOf(id){
 }
 
 function renderNotch(){
+  renderNotchMode();
   const host = document.getElementById('notch-list');
   const note = document.getElementById('notch-note');
   if(!host || !note) return;
@@ -1079,6 +1105,17 @@ function renderNotch(){
   note.textContent = ui('Showing', 'Showing') + ' ' + shown.join('   |   ')
     + '.  ' + ui('One provider always stays ticked, so the pill is never empty.', 'One provider always stays ticked, so the pill is never empty.');
 }
+
+document.getElementById('notch-modes').addEventListener('click', e => {
+  const b = e.target.closest('[data-nm]');
+  if(!b || b.dataset.nm === notchMode) return;
+  const previous = notchMode;
+  notchMode = b.dataset.nm;
+  renderNotchMode();
+  invoke('set_notch_mode', { mode:notchMode })
+    .then(v => { notchMode = typeof v === 'string' ? v : notchMode; renderNotchMode(); toast(ui('Saved', 'Saved')); })
+    .catch(e => { notchMode = previous; renderNotchMode(); strip('set_notch_mode failed: ' + errText(e)); });
+});
 
 /* Everything ticked AND every window left on "fullest" is stored as an EMPTY list, not as four
    slots. Empty means "all" to the Rust side, so a provider added in a future version turns up on
@@ -1324,6 +1361,11 @@ function boot(){
           .map(x => ({ provider:x.provider, window: typeof x.window === 'string' ? x.window : '' }))
       : [];
     renderNotch();
+  });
+
+  call('get_notch_mode', undefined, 'smart').then(v => {
+    notchMode = ['smart','pinned','all'].indexOf(v) >= 0 ? v : 'smart';
+    renderNotchMode();
   });
 
   call('get_scale', undefined, null).then(v => {

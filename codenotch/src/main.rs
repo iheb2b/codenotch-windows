@@ -26,7 +26,7 @@ use tauri::{AppHandle, Emitter, Manager};
 /// Logical size of the notch window: the 70 pt pill column on the right plus room for the hover card on the left.
 pub const NOTCH_W: f64 = 340.0;
 /// Hand-bumped build tag, written to run.log at startup so a log can always be matched to the exe that wrote it.
-pub const BUILD: &str = "r31";
+pub const BUILD: &str = "r32-smart-capsule";
 pub const NOTCH_H: f64 = 460.0; // 300 clipped the card once it held three window blocks plus the session list
 
 pub struct AppState {
@@ -333,6 +333,14 @@ fn open_provider_page(provider: String) {
         cmd.creation_flags(0x0800_0000);
     }
     let _ = cmd.spawn();
+}
+
+/// Bring the provider back to the front. This is the safe half of an approval action: Codenotch
+/// can point at the exact application that needs attention, but it never synthesizes an approval
+/// click without a stable request id and a preview of what is being authorized.
+#[tauri::command]
+fn focus_provider_app(provider: String) -> bool {
+    focus::focus_provider(&provider)
 }
 
 /// Hot rectangles in **physical pixels**, window-relative, as x,y,w,h: the pill, plus the card
@@ -752,6 +760,30 @@ fn set_notch_slots(app: AppHandle, slots: Vec<config::TraySlot>) {
     let _ = app.emit("notch_slots", list);
 }
 
+#[tauri::command]
+fn get_notch_mode(app: AppHandle) -> String {
+    let st = app.state::<AppState>();
+    st.cfg.lock().unwrap().notch_mode.clone()
+}
+
+#[tauri::command]
+fn set_notch_mode(app: AppHandle, mode: String) -> String {
+    let mode = match mode.as_str() {
+        "pinned" => "pinned",
+        "all" => "all",
+        _ => "smart",
+    }
+    .to_string();
+    {
+        let st = app.state::<AppState>();
+        let mut c = st.cfg.lock().unwrap();
+        c.notch_mode = mode.clone();
+        config::save(&c);
+    }
+    let _ = app.emit("notch_mode", &mode);
+    mode
+}
+
 /// The application's own icon, so the settings window shows what the taskbar shows.
 #[tauri::command]
 fn get_app_icon() -> Option<String> {
@@ -1075,6 +1107,7 @@ fn main() {
             open_data_dir,
             drag_begin,
             open_provider_page,
+            focus_provider_app,
             refresh_usage,
             open_usage_page,
             set_hot,
@@ -1091,6 +1124,8 @@ fn main() {
             get_tray_preview,
             get_notch_slots,
             set_notch_slots,
+            get_notch_mode,
+            set_notch_mode,
             get_app_icon,
             get_ui_flags,
             set_ui_flags,

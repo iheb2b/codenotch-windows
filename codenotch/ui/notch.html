@@ -6,19 +6,33 @@
   /* Visual reference: upstream docs/specs/2026-08-28-usage-notch-design.md, reproduced for Windows */
   *{box-sizing:border-box} /* content-box padding once pushed the card past the window's left edge */
   html,body{margin:0;padding:0;width:100%;height:100%;background:transparent;overflow:hidden;user-select:none}
-  body{font-family:"Segoe UI",system-ui,sans-serif;color:#fff}
+  body{font-family:"Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;color:#fff}
+  html.preview-mode body{
+    background:
+      radial-gradient(circle at 18% 18%,rgba(255,185,100,.92),transparent 29%),
+      radial-gradient(circle at 68% 22%,rgba(255,93,151,.82),transparent 31%),
+      radial-gradient(circle at 38% 82%,rgba(90,115,255,.82),transparent 36%),
+      linear-gradient(145deg,#183a56,#7761b3 52%,#14283c);
+  }
   #root{position:relative;width:100%;height:100%}
 
   /* The pill on the right edge */
   #pill{
     position:absolute;right:0;top:50%;transform:translateY(-50%);
-    width:70px;padding:18px 0;background:#000;
-    border-radius:20px 0 0 20px;
-    /* Stays visible on dark wallpapers: a thin stroke plus a faint glow, the only outline when black sits on black */
-    border:1px solid #2e2e2e;border-right:none;
-    box-shadow:none;
-    display:flex;flex-direction:column;align-items:center;gap:14px;cursor:pointer;
+    --shell:rgba(13,17,23,.84);width:72px;padding:14px 0;
+    background:
+      radial-gradient(90% 54% at 12% 2%,rgba(255,255,255,.30),transparent 60%),
+      radial-gradient(75% 55% at 6% 96%,rgba(116,153,255,.13),transparent 68%),
+      linear-gradient(145deg,rgba(37,43,53,.66),rgba(7,10,15,.76) 64%,rgba(22,27,35,.72));
+    border-radius:30px 0 0 30px;border:1px solid rgba(255,255,255,.26);border-right:none;
+    box-shadow:inset 1px 1px 0 rgba(255,255,255,.20),inset -1px -1px 0 rgba(0,0,0,.22),-10px 16px 38px rgba(0,0,0,.30),-1px 0 14px rgba(255,255,255,.05);
+    backdrop-filter:blur(24px) saturate(155%);
+    display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer;
+    transition:border-color .28s ease,box-shadow .28s ease,background .28s ease;
+    isolation:isolate;
   }
+  #pill::marker{display:none}
+  #pill.attention{border-color:rgba(255,211,92,.58);box-shadow:inset 1px 1px 0 rgba(255,255,255,.22),inset -1px -1px 0 rgba(0,0,0,.20),-10px 16px 38px rgba(0,0,0,.32),-5px 0 26px rgba(255,191,0,.17)}
   /* Fillets: the concave arcs between the pill's top/bottom and the screen edge (the inverse rounded
      corner in the upstream design frame). An R×R black square hugs the edge and a radial gradient
      punches out the circle of radius R centred on its outer corner; what remains is the arc. A 1 px
@@ -26,17 +40,21 @@
   #pill::before,#pill::after{
     content:"";position:absolute;right:0;width:var(--fillet);height:var(--fillet);pointer-events:none;
   }
-  #pill{--fillet:26px}
+  #pill{--fillet:30px}
   #pill::before{
     top:calc(-1 * var(--fillet)); /* covers the 1 px stroke along the pill's top edge so there is no seam */
-    background:radial-gradient(circle at 0 0, transparent calc(var(--fillet) - 1.5px), #2e2e2e calc(var(--fillet) - 0.5px), #000 calc(var(--fillet) + 0.5px));
+    background:radial-gradient(circle at 0 0,transparent calc(var(--fillet) - 1.5px),rgba(255,255,255,.24) calc(var(--fillet) - .5px),var(--shell) calc(var(--fillet) + .5px));
   }
   #pill::after{
     bottom:calc(-1 * var(--fillet));
-    background:radial-gradient(circle at 0 100%, transparent calc(var(--fillet) - 1.5px), #2e2e2e calc(var(--fillet) - 0.5px), #000 calc(var(--fillet) + 0.5px));
+    background:radial-gradient(circle at 0 100%,transparent calc(var(--fillet) - 1.5px),rgba(255,255,255,.24) calc(var(--fillet) - .5px),var(--shell) calc(var(--fillet) + .5px));
   }
-  .cell{display:flex;flex-direction:column;align-items:center;gap:6px}
-  .ringwrap{position:relative;width:56px;height:56px}
+  .cell{display:flex;flex-direction:column;align-items:center;gap:4px;max-height:84px;opacity:1;transform:translateX(0) scale(1);transition:max-height .34s cubic-bezier(.16,1,.3,1),opacity .20s ease,transform .34s cubic-bezier(.16,1,.3,1);overflow:hidden}
+  .cell.entering{animation:cell-in .36s cubic-bezier(.16,1,.3,1) both}
+  .cell.leaving{max-height:0;opacity:0;transform:translateX(16px) scale(.82)}
+  @keyframes cell-in{from{max-height:0;opacity:0;transform:translateX(18px) scale(.78)}to{max-height:84px;opacity:1;transform:none}}
+  .ringwrap{position:relative;width:56px;height:56px;border-radius:50%;transition:transform .34s cubic-bezier(.16,1,.3,1),filter .28s ease;background:radial-gradient(circle at 35% 22%,rgba(255,255,255,.12),transparent 42%)}
+  .cell:hover .ringwrap{transform:translateX(-2px) scale(1.045)}
   .ringwrap > svg.ring{position:absolute;inset:0;overflow:visible} /* pins only the ring itself; an inline logo svg must not match this or it ends up in the top-left corner */
   .glyph{
     position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
@@ -51,7 +69,11 @@
   .glyph img.appicon{width:30px;height:30px;border-radius:8px;object-fit:cover}
   .c-head .mark{display:inline-block;width:16px;height:16px;color:#e8e8ea;margin-right:2px}
   .c-head .mark svg{width:16px;height:16px;fill:currentColor}
-  .pct{font-size:15px;font-weight:600;color:#fff;font-variant-numeric:tabular-nums}
+  .pct{font-size:14px;font-weight:650;color:#fff;font-variant-numeric:tabular-nums;line-height:18px}
+  .state-tag{height:12px;font-size:8px;line-height:12px;letter-spacing:.11em;text-transform:uppercase;color:#89919d;font-weight:700}
+  .cell[data-state="attention"] .state-tag{color:#ffd75e}
+  .cell[data-state="running"] .state-tag{color:#58e99c}
+  .cell[data-state="attention"] .ringwrap{filter:drop-shadow(0 0 9px rgba(255,191,0,.26))}
   .dim{opacity:.55}
   /* Session arc animation */
   @keyframes spin{to{transform:rotate(360deg)}}
@@ -67,43 +89,61 @@
     /* Anchored on both sides = fluid width: whatever the WebView's real logical width, the card cannot
        extend past the window's left edge (a fixed max-width got clipped when the DPI disagreed).
        The 246 cap matches the upstream spec. */
-    max-width:246px;margin-left:auto;background:#0a0a0a;border-radius:16px;padding:16px;
+    max-width:250px;margin-left:auto;background:
+      radial-gradient(115% 70% at 8% -8%,rgba(255,255,255,.24),transparent 52%),
+      radial-gradient(85% 65% at 105% 100%,rgba(103,139,255,.10),transparent 64%),
+      linear-gradient(145deg,rgba(35,41,51,.76),rgba(8,11,16,.82));
+    border:1px solid rgba(255,255,255,.24);border-radius:28px;padding:16px;
+    box-shadow:inset 1px 1px 0 rgba(255,255,255,.17),inset -1px -1px 0 rgba(0,0,0,.22),0 22px 56px rgba(0,0,0,.38);backdrop-filter:blur(26px) saturate(145%);
     overflow-wrap:anywhere;min-width:0;
     max-height:calc(100% - 16px);overflow:hidden; /* never taller than the window, however short it is */
-    display:none;
+    visibility:hidden;opacity:0;pointer-events:none;scale:.94;translate:8px 0;transform-origin:100% 50%;transition:opacity .18s ease,scale .34s cubic-bezier(.16,1,.3,1),translate .34s cubic-bezier(.16,1,.3,1),visibility 0s linear .34s;
   }
-  #card.show{display:block}
-  #card::after{ /* solid triangle pointing at the pill */
-    content:"";position:absolute;right:-8px;top:var(--tail);transform:translateY(-50%);
-    border:8px solid transparent;border-right:none;border-left:10px solid #0a0a0a;
-  }
+  #card.show{visibility:visible;opacity:1;pointer-events:auto;scale:1;translate:0 0;transition-delay:0s}
+  #card::before{content:"";position:absolute;inset:1px;border-radius:27px;pointer-events:none;background:linear-gradient(118deg,rgba(255,255,255,.08),transparent 27%,transparent 72%,rgba(255,255,255,.025));box-shadow:inset 0 0 24px rgba(255,255,255,.025)}
   .c-head{display:flex;align-items:center;gap:8px;margin-bottom:4px}
   .c-title{font-size:14px;font-weight:700}
-  .c-sub{font-size:11px;color:#808080;margin-bottom:10px}
+  .c-sub{font-size:11px;color:#a2a9b4;margin-bottom:10px}
+  .status-hero{display:flex;align-items:center;gap:9px;margin:10px 0 4px;padding:10px 11px;border:1px solid rgba(255,255,255,.13);border-radius:18px;background:linear-gradient(145deg,rgba(255,255,255,.10),rgba(255,255,255,.035));box-shadow:inset 0 1px 0 rgba(255,255,255,.07)}
+  .status-hero.attention{border-color:rgba(255,211,92,.29);background:linear-gradient(145deg,rgba(255,208,74,.16),rgba(255,157,28,.055))}
+  .status-orb{width:8px;height:8px;border-radius:50%;background:#69717d;box-shadow:0 0 10px currentColor;flex:0 0 auto}
+  .status-copy{min-width:0;flex:1}.status-name{font-size:11px;font-weight:700;color:#f7f8fa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.status-meta{font-size:10px;color:#a2a9b4;margin-top:2px}
   .win{margin-top:10px}
   .w-row{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;flex-wrap:wrap;column-gap:8px}
   .w-label{color:#e8e8ea;font-weight:600;white-space:nowrap}
-  .w-reset{color:#808080;font-size:11px;white-space:nowrap;margin-left:auto} /* wrap as a whole when it does not fit; never break inside a word */
-  .w-track{height:4px;border-radius:2px;background:#2d2d2d;margin:6px 0 4px;overflow:hidden}
+  .w-reset{color:#9ca4af;font-size:11px;white-space:nowrap;margin-left:auto} /* wrap as a whole when it does not fit; never break inside a word */
+  .w-track{height:5px;border-radius:999px;background:rgba(255,255,255,.12);margin:6px 0 4px;overflow:hidden;box-shadow:inset 0 1px 2px rgba(0,0,0,.22)}
   .w-fill{height:100%;border-radius:2px}
-  .w-used{font-size:11px;color:#808080}
+  .w-used{font-size:11px;color:#9ca4af}
   .c-note{font-size:12px;color:#c8c8c8;line-height:1.5;margin-top:6px}
-  .c-sessions{margin-top:12px;border-top:1px solid #1e1e1e;padding-top:8px}
+  .c-sessions{margin-top:12px;border-top:1px solid rgba(255,255,255,.10);padding-top:8px}
   .s-row{display:flex;align-items:center;gap:6px;font-size:11px;color:#b0b0b3;padding:2px 0}
   .s-dot{width:6px;height:6px;border-radius:3px;flex:0 0 auto}
+  .c-actions{display:flex;gap:6px;margin-top:11px}
+  .action{flex:1;border:1px solid rgba(255,255,255,.18);border-radius:999px;background:linear-gradient(145deg,rgba(255,255,255,.13),rgba(255,255,255,.055));box-shadow:inset 0 1px 0 rgba(255,255,255,.08);color:#f2f4f7;font:600 11px "Segoe UI Variable Display","Segoe UI",sans-serif;padding:8px 9px;cursor:pointer;transition:transform .18s cubic-bezier(.16,1,.3,1),background .18s ease,border-color .18s ease,filter .18s ease}
+  .action:hover{transform:translateY(-1px);background:linear-gradient(145deg,rgba(255,255,255,.19),rgba(255,255,255,.08));border-color:rgba(255,255,255,.29)}
+  .action:active{transform:scale(.965)}
+  .action.primary{background:linear-gradient(145deg,#ffe38a,#ffb529 52%,#ff9418);border-color:rgba(255,235,160,.72);box-shadow:inset 0 1px 0 rgba(255,255,255,.42),0 7px 18px rgba(255,164,25,.16);color:#21180a}
+  .action.primary:hover{filter:brightness(1.07)}
   /* Size slider — the last row of the hover card. Only the pill is scaled, so this row keeps its
      own size and does not move out from under the cursor while it is being dragged. */
-  .c-scale{display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:8px;border-top:1px solid #1e1e1e}
-  .c-scale input[type=range]{-webkit-appearance:none;appearance:none;flex:1;height:3px;border-radius:2px;background:#2d2d2d;outline:none}
-  .c-scale input[type=range]::-webkit-slider-runnable-track{height:3px;border-radius:2px;background:#2d2d2d}
-  .c-scale input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:10px;height:10px;margin-top:-3.5px;border-radius:50%;background:#8a8a8a;cursor:pointer}
-  .c-scale-val{font-size:10px;color:#808080;min-width:30px;text-align:right}
+  .c-scale{display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:9px;border-top:1px solid rgba(255,255,255,.10)}
+  .c-scale input[type=range]{-webkit-appearance:none;appearance:none;flex:1;height:4px;border-radius:999px;background:rgba(255,255,255,.14);outline:none}
+  .c-scale input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:999px;background:rgba(255,255,255,.14)}
+  .c-scale input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:13px;height:13px;margin-top:-4.5px;border-radius:50%;background:linear-gradient(145deg,#fff,#aeb7c4);border:1px solid rgba(255,255,255,.65);box-shadow:0 2px 7px rgba(0,0,0,.35);cursor:pointer}
+  .c-scale-val{font-size:10px;color:#9ca4af;min-width:30px;text-align:right}
 
   #notice{
     position:absolute;left:8px;bottom:6px;right:80px;font-size:10px;color:#808080;
     background:rgba(0,0,0,.85);border-radius:8px;padding:4px 8px;display:none
   }
   #notice.show{display:block}
+  @media (prefers-reduced-transparency:reduce){
+    #pill{--shell:#11151c;background:#11151c;backdrop-filter:none}
+    #card{background:#141922;backdrop-filter:none}
+  }
+  @media (forced-colors:active){#pill,#card,.status-hero,.action{forced-color-adjust:auto}}
+  @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}}
 </style>
 </head>
 <body>
@@ -113,6 +153,26 @@
   <div id="notice"></div>
 </div>
 <script>
+/* `?preview=attention` renders this exact UI without a Tauri host. It is inert and exists only so
+   design changes can be visually reviewed before a signed Windows build is published. */
+const PREVIEW=!window.__TAURI__&&new URLSearchParams(location.search).get('preview')==='attention';
+if(PREVIEW){
+  document.documentElement.classList.add('preview-mode');
+  const now=Date.now();
+  const replies={
+    get_usage:{status:'absent',windows:[],fetched_at:now,note:''},
+    get_codex:{status:'ok',windows:[
+      {id:'session',label:'5-Hour Limit',used:.07,resets_at:now+2.25*3600000},
+      {id:'weekly_all',label:'Weekly Limit',used:.31,resets_at:now+3.4*86400000}
+    ],fetched_at:now,note:'ChatGPT Plus · local activity only'},
+    get_cursor:{status:'absent',windows:[]},get_antigravity:{status:'absent',windows:[]},
+    get_glyphs:{},get_scale:1,
+    get_notch_slots:[],get_notch_mode:'smart',
+    get_state:{sessions:[],agg:'idle',lang_resolved:'en'},
+    get_activity:[{provider:'codex',state:'waiting',name:'Build the Windows release',detail:'needs your input',since:now-12*60000}]
+  };
+  window.__TAURI__={core:{invoke:(cmd)=>Promise.resolve(cmd in replies?replies[cmd]:true)},event:{listen:()=>Promise.resolve(()=>{})}};
+}
 const invoke = window.__TAURI__.core.invoke;
 const listen = window.__TAURI__.event.listen;
 
@@ -121,12 +181,13 @@ const AMPLE='#00FF88', WATCH='#F2FF00', CRIT='#FF3F00';
 const TRACK='#303030', AMBER='#FFBF00', RUNGREEN='#28E07B';
 const tone=f=> f>=0.8?CRIT : f>=0.5?WATCH : AMPLE;
 
-let usage={status:'',windows:[],fetched_at:0,note:''};
+let usage={status:'absent',windows:[],fetched_at:0,note:''};
 let codexSnap={status:'absent',windows:[],fetched_at:0,note:''};
 let cursorSnap={status:'absent',windows:[],fetched_at:0,note:''};
 let agSnap={status:'absent',windows:[],fetched_at:0,note:''};
 let glyphs={}; // id → {kind:'mark'|'appicon', url}
 let activity=[]; // working state of the non-Claude providers: {provider,state:'busy'|'waiting',name,detail,since}
+let notchMode='smart';
 let uiLang='en';
 const RU_TEXT={
   'Included usage':'Включённое использование',
@@ -232,6 +293,8 @@ function workState(id){
   if(acts.some(a=>a.state==='busy')) return 'running';
   return 'idle';
 }
+function providerIsOpen(id){ return activity.some(a=>a.provider===id&&a.state==='open'); }
+function providerIsRelevant(id){ return workState(id)!=='idle'||providerIsOpen(id); }
 function glyphHtml(p,small){
   const g=glyphs[p.id];
   if(g&&g.kind==='svg'&&g.svg) return `<span class="mark">${g.svg}</span>`;
@@ -249,17 +312,30 @@ function slotFor(id){
   return null;
 }
 function providers(){
-  const list=[{id:'claude',name:'Claude',glyph:'C',snap:usage}];
+  const list=[];
+  if(usage.status!=='absent') list.push({id:'claude',name:'Claude',glyph:'C',snap:usage});
   if(codexSnap.status!=='absent') list.push({id:'codex',name:'Codex',glyph:'Cx',snap:codexSnap});
   if(cursorSnap.status!=='absent') list.push({id:'cursor',name:'Cursor',glyph:'Cu',snap:cursorSnap});
   if(agSnap.status!=='absent') list.push({id:'gemini',name:'Antigravity',glyph:'Ag',snap:agSnap});
-  if(Array.isArray(notchSlots)&&notchSlots.length){
-    const picked=list.filter(p=>!!slotFor(p.id));
-    // Never leave the notch with nothing in it: an empty result means the choice no longer matches
-    // any available provider, so fall back to showing everything rather than an empty pill.
-    if(picked.length) return picked;
-  }
-  return list;
+  // Keep the overlay reachable during startup or when no provider has ever reported usage.
+  if(!list.length) list.push({id:'codex',name:'Codex',glyph:'Cx',snap:codexSnap});
+
+  const picked=(Array.isArray(notchSlots)&&notchSlots.length)
+    ? list.filter(p=>!!slotFor(p.id)) : list.slice();
+  const allowed=picked.length?picked:list;
+  if(notchMode==='all') return list;
+  if(notchMode==='pinned') return allowed;
+
+  // Smart mode: attention first, then working, then merely open. Old quota history by itself is
+  // not presence, which is why a closed Claude no longer occupies the capsule.
+  const rank={attention:0,running:1,idle:2};
+  const relevant=allowed.filter(p=>providerIsRelevant(p.id)).sort((a,b)=>{
+    const d=(rank[workState(a.id)]??2)-(rank[workState(b.id)]??2);
+    return d||list.indexOf(a)-list.indexOf(b);
+  });
+  if(relevant.length) return relevant;
+  // Quiet fallback: one useful control, preferring Codex when it is available.
+  return [allowed.find(p=>p.id==='codex')||allowed[0]||list[0]];
 }
 function headlineOf(snap,id){
   if(!snap.windows.length) return null;
@@ -296,24 +372,39 @@ function isStale(){
 
 function renderRing(){
   const ps=providers();
-  // Rebuild the DOM only when the structure changes (never swap the element under the cursor)
-  const want=ps.map(p=>p.id+':'+(glyphs[p.id]?glyphs[p.id].kind:'-')).join(',');
-  if(pill.dataset.cells!==want){
-    pill.innerHTML=ps.map(p=>`<div class="cell" data-p="${p.id}">
-      <div class="ringwrap"><svg class="ring" viewBox="0 0 56 56"></svg><div class="glyph ${(!glyphs[p.id]&&p.glyph.length>1)?'small':''}">${glyphHtml(p)}</div></div>
-      <div class="pct">—</div></div>`).join('');
-    pill.dataset.cells=want;
+  if(!ps.some(p=>p.id===hoverId)) hoverId=ps[0].id;
+  const ids=new Set(ps.map(p=>p.id));
+  for(const cell of [...pill.querySelectorAll('.cell')]){
+    if(!ids.has(cell.dataset.p)&&!cell.classList.contains('leaving')){
+      cell.classList.add('leaving');
+      cell._leaveTimer=setTimeout(()=>{cell.remove();reportHot();},220);
+    }
   }
   for(const p of ps){
+    let cell=pill.querySelector(`.cell[data-p="${p.id}"]`);
+    if(cell&&cell.classList.contains('leaving')){
+      clearTimeout(cell._leaveTimer);cell.classList.remove('leaving');
+    }
+    if(!cell){
+      cell=document.createElement('div');cell.className='cell entering';cell.dataset.p=p.id;
+      cell.innerHTML=`<div class="ringwrap"><svg class="ring" viewBox="0 0 56 56"></svg><div class="glyph ${(!glyphs[p.id]&&p.glyph.length>1)?'small':''}">${glyphHtml(p)}</div></div><div class="pct">—</div><div class="state-tag"></div>`;
+      setTimeout(()=>cell.classList.remove('entering'),260);
+    }
+    pill.appendChild(cell);
+  }
+  pill.classList.toggle('attention',ps.some(p=>workState(p.id)==='attention'));
+  for(const p of ps){
     const cell=pill.querySelector(`.cell[data-p="${p.id}"]`); if(!cell) continue;
-    const svg=cell.querySelector('svg.ring'), pct=cell.querySelector('.pct'), glyph=cell.querySelector('.glyph'), wrap=cell.querySelector('.ringwrap');
+    const svg=cell.querySelector('svg.ring'), pct=cell.querySelector('.pct'), glyph=cell.querySelector('.glyph'), wrap=cell.querySelector('.ringwrap'), tag=cell.querySelector('.state-tag');
     const h=headlineOf(p.snap,p.id);
     let inner=`<circle cx="28" cy="28" r="22" fill="#2a2a2a"/><circle cx="28" cy="28" r="25" fill="none" stroke="${TRACK}" stroke-width="5"/>`;
     if(h && h.count==null) inner+=svgArc(25,Math.min(h.used,1),tone(h.used),5);
     { // thin inner arc: spinning = working, amber pulse = waiting on you (one animation for all four, different sources)
       const ws=workState(p.id);
+      cell.dataset.state=ws;
       if(ws==='running') inner+=`<g class="arc-spin">${svgArc(19,0.28,RUNGREEN,2.5)}</g>`;
       else if(ws==='attention') inner+=`<g class="arc-pulse"><circle cx="28" cy="28" r="19" fill="none" stroke="${AMBER}" stroke-width="2.5"/></g>`;
+      tag.textContent=ws==='attention'?(uiLang==='ru'?'ответ':'review'):ws==='running'?(uiLang==='ru'?'работа':'live'):providerIsOpen(p.id)?(uiLang==='ru'?'открыто':'open'):'';
     }
     svg.innerHTML=inner;
     if(p.snap.status==='needsAuth'||p.snap.status==='none') pct.textContent='—';
@@ -346,16 +437,43 @@ function ago(ms){
   return m<60?`${m}m ago`:`${Math.round(m/60)}h ago`;
 }
 
+function elapsedCopy(ms){
+  if(!ms) return '';
+  const total=Math.max(0,Math.floor((Date.now()-ms)/1000));
+  if(total<60) return `${Math.max(1,total)}s`;
+  if(total<3600) return `${Math.floor(total/60)}m`;
+  return `${Math.floor(total/3600)}h ${Math.floor((total%3600)/60)}m`;
+}
+
+function activeInfo(p){
+  if(p.id==='claude'){
+    const rows=(stateSnap.sessions||[]).filter(s=>s.state!=='idle');
+    const s=rows.find(x=>x.state==='attention')||rows.find(x=>x.state==='running')||rows[0];
+    if(s) return {state:s.state==='attention'?'attention':s.state==='running'?'running':'done',name:s.title||p.name,since:s.started||0,sessionId:s.id||''};
+  }
+  const rows=activity.filter(a=>a.provider===p.id);
+  const a=rows.find(x=>x.state==='waiting')||rows.find(x=>x.state==='busy')||rows.find(x=>x.state==='open');
+  if(a) return {state:a.state==='waiting'?'attention':a.state==='busy'?'running':'open',name:a.name||p.name,since:a.since||0,sessionId:''};
+  return {state:'idle',name:p.name,since:0,sessionId:''};
+}
+
 const STATE_DOT={running:RUNGREEN,attention:AMBER,done:'#57c7ff'};
 
-let hoverId='claude';
+let hoverId='codex';
 function renderCard(){
   const c=document.getElementById('card');
   const p=providers().find(x=>x.id===hoverId)||providers()[0];
   const snap=p.snap;
+  const info=activeInfo(p);
   const headIcon=glyphHtml(p,true);
-  let html=`<div class="c-head">${headIcon}<span class="c-title">${uiLang==='ru'?'Использование '+p.name:p.name+' Usage'}</span></div>`;
+  let html=`<div class="c-head">${headIcon}<span class="c-title">${esc(p.name)}</span></div>`;
   if(staleOf(snap)&&snap.fetched_at) html+=`<div class="c-sub">${textCopy('Updated')} ${ago(snap.fetched_at)}</div>`;
+  const stateLabel=info.state==='attention'?(uiLang==='ru'?'Требуется ваше подтверждение':'Needs your approval')
+    :info.state==='running'?(uiLang==='ru'?'Работает сейчас':'Working now')
+    :info.state==='open'?(uiLang==='ru'?'Приложение открыто':'App is open')
+    :(uiLang==='ru'?'Готово к работе':'Ready');
+  const stateColor=info.state==='attention'?AMBER:info.state==='running'?RUNGREEN:info.state==='done'?'#57c7ff':'#75808d';
+  html+=`<div class="status-hero ${info.state}"><span class="status-orb" style="background:${stateColor};color:${stateColor}"></span><div class="status-copy"><div class="status-name">${esc(stateLabel)}</div><div class="status-meta">${esc(info.name)}${info.since?' · '+elapsedCopy(info.since):''}</div></div></div>`;
   if(snap.status==='needsAuth'){
     const who={claude:'Sign in to Claude Code to see usage.',cursor:'Sign in to Cursor to see usage.',codex:'Sign in to Codex to see usage.',gemini:'Sign in to Antigravity to see usage.'}[p.id]||'';
     html+=`<div class="c-note">${textCopy(who)}<br>${esc(textCopy(snap.note||''))}</div>`;
@@ -389,13 +507,15 @@ function renderCard(){
     const acts=activity.filter(a=>a.provider===p.id);
     if(acts.length){
       html+=`<div class="c-sessions">`;
-      for(const a of acts.slice(0,5)){
-        const col=a.state==='waiting'?AMBER:RUNGREEN;
+      for(const a of acts.slice(0,3)){
+        const col=a.state==='waiting'?AMBER:a.state==='busy'?RUNGREEN:'#75808d';
         html+=`<div class="s-row"><span class="s-dot" style="background:${col}"></span>${esc(a.name)}<span style="color:#808080;margin-left:auto">${esc(textCopy(a.detail))}</span></div>`;
       }
       html+=`</div>`;
     }
   }
+  const primary=info.state==='attention'?(uiLang==='ru'?'Проверить запрос':'Review request'):(uiLang==='ru'?'Открыть приложение':'Focus app');
+  html+=`<div class="c-actions"><button class="action ${info.state==='attention'?'primary':''}" data-action="focus" data-provider="${esc(p.id)}" data-session="${esc(info.sessionId)}">${primary}</button><button class="action" data-action="refresh">${uiLang==='ru'?'Обновить':'Refresh'}</button></div>`;
   html+=`<div class="c-scale"><input id="scale-range" type="range" min="40" max="100" step="5" value="${scalePct}" aria-label="${textCopy('Notch size')}" title="${textCopy('Notch size')}"><span class="c-scale-val" id="scale-val">${scalePct}%</span></div>`;
   c.innerHTML=html;
   wireScaleRow();
@@ -414,8 +534,21 @@ function placeCard(){
 
 function esc(s){const d=document.createElement('div');d.textContent=s||'';return d.innerHTML;}
 
+function focusProvider(provider,sessionId){
+  const cmd=(provider==='claude'&&sessionId)?invoke('focus_session',{id:sessionId}):invoke('focus_provider_app',{provider});
+  cmd.then(ok=>{if(!ok)notice(`Could not find an open ${provider} window`);else hideCard();}).catch(e=>notice('focus failed: '+e));
+}
+
 /* Hover: stays expanded while either the pill or the card is under the cursor; collapses after a 250 ms grace period (upstream motion rule) */
 const card=document.getElementById('card'), pill=document.getElementById('pill');
+card.addEventListener('click',e=>{
+  const b=e.target.closest('[data-action]');if(!b)return;
+  e.preventDefault();e.stopPropagation();
+  if(b.dataset.action==='focus') focusProvider(b.dataset.provider,b.dataset.session||'');
+  else if(b.dataset.action==='refresh'){
+    invoke('refresh_usage').then(()=>notice(uiLang==='ru'?'Обновляется…':'Refreshing…')).catch(e=>notice('refresh failed: '+e));
+  }
+});
 let hideTimer=null;
 function showCard(){clearTimeout(hideTimer);card.classList.add('show');renderCard();armWatchdog();} // show first, then render: placeCard needs offsetHeight
 function hideCard(){card.classList.remove('show');reportHot();}
@@ -478,6 +611,7 @@ function armWatchdog(){
 // Viewport fit (pure front-end fallback, independent of Rust): the window is 340 × primary scale physical px,
 // so if this page's CSS viewport is not 340 wide the WebView's DPR disagrees with the monitor; CSS zoom pulls the layout back to the design size.
 function fitZoom(){
+  if(PREVIEW){document.documentElement.style.zoom='';return 1;}
   const z=innerWidth/340;
   document.documentElement.style.zoom=(Math.abs(z-1)>0.02)?String(z):'';
   return z;
@@ -550,7 +684,12 @@ document.addEventListener('mousemove',e=>{
 });
 document.addEventListener('mouseup',e=>{
   if(e.button!==0)return;
-  if(press&&!dragging) invoke('open_provider_page',{provider:press.id}).catch(()=>{});
+  if(press&&!dragging){
+    const p=providers().find(x=>x.id===press.id);
+    const info=p?activeInfo(p):null;
+    if(info&&info.state!=='idle') focusProvider(press.id,info.sessionId||'');
+    else invoke('open_provider_page',{provider:press.id}).catch(()=>{});
+  }
   press=null;
 });
 listen('drag_end',()=>{dragging=false;press=null;reportHot();}).catch(()=>{});
@@ -573,8 +712,14 @@ listen('antigravity',e=>{agSnap=e.payload||agSnap;renderRing();if(card.classList
 invoke('get_antigravity').then(u=>{agSnap=u||agSnap;renderRing();}).catch(()=>{});
 loadScale();
 invoke('get_notch_slots').then(v=>{if(Array.isArray(v)){notchSlots=v;renderRing();}}).catch(()=>{});
+invoke('get_notch_mode').then(v=>{notchMode=['smart','pinned','all'].includes(v)?v:'smart';renderRing();}).catch(()=>{});
 listen('notch_slots',e=>{
   notchSlots=Array.isArray(e.payload)?e.payload:null;
+  renderRing();
+  if(card.classList.contains('show')){renderCard();armWatchdog();}
+}).catch(()=>{});
+listen('notch_mode',e=>{
+  notchMode=['smart','pinned','all'].includes(e.payload)?e.payload:'smart';
   renderRing();
   if(card.classList.contains('show')){renderCard();armWatchdog();}
 }).catch(()=>{});
@@ -586,6 +731,7 @@ invoke('get_codex').then(u=>{codexSnap=u||codexSnap;renderRing();}).catch(()=>{}
 invoke('get_usage').then(u=>{usage=u||usage;renderRing();}).catch(e=>notice('get_usage failed: '+e));
 invoke('get_state').then(s=>{stateSnap=s||stateSnap;setUiLanguage(stateSnap.lang_resolved);renderRing();}).catch(()=>{});
 setInterval(renderRing,30_000); // stale state and reset copy move with time
+if(PREVIEW)setTimeout(()=>{hoverId='codex';showCard();},120);
 </script>
 </body>
 </html>

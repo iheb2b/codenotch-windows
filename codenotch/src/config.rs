@@ -65,6 +65,12 @@ pub struct Config {
     /// behaviour. Same shape as the tray slots so the two settings read alike.
     #[serde(default)]
     pub notch_slots: Vec<TraySlot>,
+    /// Which providers the edge capsule shows: "smart" keeps only open/working tools (and a
+    /// single useful fallback), "pinned" follows `notch_slots`, and "all" shows every available
+    /// provider. Smart is deliberately the default so old usage history does not look like a
+    /// currently open application.
+    #[serde(default = "default_notch_mode")]
+    pub notch_mode: String,
     /// false = the pill is kept off the screen edge entirely; the tray icon is then the only way in
     #[serde(default = "yes")]
     pub notch_visible: bool,
@@ -79,6 +85,9 @@ fn default_notch_y() -> f64 {
 }
 fn default_scale() -> f64 {
     1.0
+}
+fn default_notch_mode() -> String {
+    "smart".into()
 }
 fn yes() -> bool {
     true
@@ -116,6 +125,7 @@ impl Default for Config {
             tray_slots: Vec::new(), // filled in by load(), from tray_providers
             notch_providers: Vec::new(), // empty = show them all
             notch_slots: Vec::new(),     // filled in by load(), from notch_providers
+            notch_mode: default_notch_mode(),
             notch_visible: true,
             tray_visible: true,
         }
@@ -179,6 +189,9 @@ pub fn load() -> Config {
 
     // A hand-edited file must not be able to produce an invisible window
     cfg.scale = cfg.scale.clamp(SCALE_MIN, SCALE_MAX);
+    if !matches!(cfg.notch_mode.as_str(), "smart" | "pinned" | "all") {
+        cfg.notch_mode = default_notch_mode();
+    }
     cfg
 }
 

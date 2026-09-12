@@ -272,3 +272,89 @@ pub fn focus_claude_desktop() -> bool {
 pub fn focus_claude_desktop() -> bool {
     false
 }
+
+/// Focus the largest visible window belonging to a provider. Codex Desktop's packaged process is
+/// named ChatGPT.exe and its local agent children are codex.exe; the other providers keep their
+/// product name in the executable. Window titles are used as a secondary signal because packaged
+/// Windows apps sometimes expose their top-level window through a host process.
+#[cfg(windows)]
+pub fn focus_provider(provider: &str) -> bool {
+    use windows::Win32::Foundation::{BOOL, HWND, LPARAM, RECT};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, FlashWindowEx, GetWindowRect, GetWindowTextLengthW, GetWindowTextW,
+        GetWindowThreadProcessId, IsIconic, IsWindowVisible, SetForegroundWindow, ShowWindow,
+        FLASHWINFO, FLASHW_ALL, SW_RESTORE,
+    };
+
+    if provider == "claude" && focus_claude_desktop() {
+        return true;
+    }
+    let maps = proc_maps();
+    let provider = provider.to_lowercase();
+    unsafe extern "system" fn cb(hwnd: HWND, l: LPARAM) -> BOOL {
+        let v = &mut *(l.0 as *mut Vec<(isize, u32, String)>);
+        if !IsWindowVisible(hwnd).as_bool() {
+            return BOOL(1);
+        }
+        let len = GetWindowTextLengthW(hwnd);
+        let mut buf = vec![0u16; (len.max(0) + 1) as usize];
+        let got = GetWindowTextW(hwnd, &mut buf);
+        let title = String::from_utf16_lossy(&buf[..got.max(0) as usize]).to_lowercase();
+        let mut pid = 0u32;
+        GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        v.push((hwnd.0 as isize, pid, title));
+        BOOL(1)
+    }
+    let mut wins: Vec<(isize, u32, String)> = Vec::new();
+    unsafe {
+        let _ = EnumWindows(Some(cb), LPARAM(&mut wins as *mut _ as isize));
+    }
+
+    let matches = |name: &str, title: &str| match provider.as_str() {
+        "codex" => name == "chatgpt.exe" || name == "codex.exe" || title.contains("codex"),
+        "cursor" => name.contains("cursor") || title.contains("cursor"),
+        "gemini" => name.contains("antigravity") || title.contains("antigravity"),
+        "claude" => name.contains("claude") || title.contains("claude"),
+        _ => false,
+    };
+    let mut best: Option<(isize, i64)> = None;
+    for (h, pid, title) in wins {
+        let name = maps.name.get(&pid).map(String::as_str).unwrap_or("");
+        if name.contains("codenotch") || !matches(name, &title) {
+            continue;
+        }
+        let mut r = RECT::default();
+        let area = unsafe {
+            if GetWindowRect(HWND(h as *mut core::ffi::c_void), &mut r).is_ok() {
+                ((r.right - r.left).max(0) as i64) * ((r.bottom - r.top).max(0) as i64)
+            } else {
+                0
+            }
+        };
+        if best.map(|(_, a)| area > a).unwrap_or(true) {
+            best = Some((h, area));
+        }
+    }
+    let Some((h, _)) = best else { return false };
+    unsafe {
+        let hwnd = HWND(h as *mut core::ffi::c_void);
+        if IsIconic(hwnd).as_bool() {
+            let _ = ShowWindow(hwnd, SW_RESTORE);
+        }
+        let focused = SetForegroundWindow(hwnd).as_bool();
+        let fi = FLASHWINFO {
+            cbSize: std::mem::size_of::<FLASHWINFO>() as u32,
+            hwnd,
+            dwFlags: FLASHW_ALL,
+            uCount: 2,
+            dwTimeout: 0,
+        };
+        let _ = FlashWindowEx(&fi);
+        focused
+    }
+}
+
+#[cfg(not(windows))]
+pub fn focus_provider(_provider: &str) -> bool {
+    false
+}

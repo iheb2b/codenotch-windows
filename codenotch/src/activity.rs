@@ -34,7 +34,7 @@ const ANTIGRAVITY_STALE_MS: u64 = 45_000;
 pub struct Activity {
     /// Provider id other than claude: codex / cursor / gemini
     pub provider: String,
-    /// busy | waiting
+    /// busy | waiting | open
     pub state: String,
     pub name: String,
     pub detail: String,
@@ -526,6 +526,53 @@ fn presence() -> Presence {
     Presence { cursor: crate::cursor::present(), codex: crate::codex::present(), gemini: crate::antigravity::present() }
 }
 
+fn provider_for_process(name: &str) -> Option<&'static str> {
+    let n = name.trim().to_ascii_lowercase();
+    if n == "codex.exe" || n.starts_with("codex-code-mode-host") {
+        Some("codex")
+    } else if n == "cursor.exe" || n.starts_with("cursor ") {
+        Some("cursor")
+    } else if n == "claude.exe" || n == "claude desktop.exe" {
+        Some("claude")
+    } else if n == "antigravity.exe" || n.starts_with("antigravity ") {
+        Some("gemini")
+    } else {
+        None
+    }
+}
+
+/// Add a quiet "open" presence only when the stronger activity probes did not already report the
+/// provider. This lets Smart mode distinguish a locally open app from an old usage snapshot.
+#[cfg(windows)]
+fn add_open_providers(all: &mut Vec<Activity>, p: Presence) {
+    let maps = crate::focus::proc_maps();
+    let mut open = std::collections::HashSet::new();
+    for name in maps.name.values() {
+        if let Some(provider) = provider_for_process(name) {
+            open.insert(provider);
+        }
+    }
+    for (id, installed, label) in [
+        ("claude", true, "Claude"),
+        ("codex", p.codex, "Codex"),
+        ("cursor", p.cursor, "Cursor"),
+        ("gemini", p.gemini, "Antigravity"),
+    ] {
+        if installed && open.contains(id) && !all.iter().any(|a| a.provider == id) {
+            all.push(Activity {
+                provider: id.into(),
+                state: "open".into(),
+                name: label.into(),
+                detail: "Open".into(),
+                since: 0,
+            });
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn add_open_providers(_all: &mut Vec<Activity>, _p: Presence) {}
+
 fn read_all(p: Presence, ctx: &mut Ctx) -> Vec<Activity> {
     let mut all = Vec::new();
     all.extend(claude_activity());
@@ -538,7 +585,25 @@ fn read_all(p: Presence, ctx: &mut Ctx) -> Vec<Activity> {
     if p.gemini {
         all.extend(antigravity_activity());
     }
+    add_open_providers(&mut all, p);
     all
+}
+
+#[cfg(test)]
+mod tests {
+    use super::provider_for_process;
+
+    #[test]
+    fn classifies_only_real_provider_processes() {
+        assert_eq!(provider_for_process("codex.exe"), Some("codex"));
+        assert_eq!(provider_for_process("codex-code-mode-host.exe"), Some("codex"));
+        assert_eq!(provider_for_process("claude.exe"), Some("claude"));
+        assert_eq!(provider_for_process("cursor.exe"), Some("cursor"));
+        assert_eq!(provider_for_process("antigravity.exe"), Some("gemini"));
+        assert_eq!(provider_for_process("codenotch.exe"), None);
+        assert_eq!(provider_for_process("chatgpt.exe"), None);
+        assert_eq!(provider_for_process("codex-command-runner-0.1.exe"), None);
+    }
 }
 
 /// For doctor: the raw material behind the Codex working-state decision

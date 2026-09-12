@@ -163,6 +163,44 @@ pub fn proc_maps() -> ProcMaps {
     m
 }
 
+/// Process ids that own a real user-facing application window. Electron apps commonly leave
+/// helper processes alive after their main window closes; process presence alone therefore cannot
+/// mean "open" in Smart notch mode. Minimized windows still count, while tiny helper/overlay
+/// windows do not.
+#[cfg(windows)]
+pub fn app_window_pids() -> std::collections::HashSet<u32> {
+    use windows::Win32::Foundation::{BOOL, HWND, LPARAM, RECT};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GetWindowRect, GetWindowTextLengthW, GetWindowThreadProcessId, IsIconic,
+        IsWindowVisible,
+    };
+
+    unsafe extern "system" fn cb(hwnd: HWND, l: LPARAM) -> BOOL {
+        let pids = &mut *(l.0 as *mut std::collections::HashSet<u32>);
+        if !IsWindowVisible(hwnd).as_bool() || GetWindowTextLengthW(hwnd) <= 0 {
+            return BOOL(1);
+        }
+        let mut rect = RECT::default();
+        let substantial = GetWindowRect(hwnd, &mut rect).is_ok()
+            && (rect.right - rect.left).max(0) >= 240
+            && (rect.bottom - rect.top).max(0) >= 160;
+        if substantial || IsIconic(hwnd).as_bool() {
+            let mut pid = 0u32;
+            GetWindowThreadProcessId(hwnd, Some(&mut pid));
+            if pid != 0 {
+                pids.insert(pid);
+            }
+        }
+        BOOL(1)
+    }
+
+    let mut pids = std::collections::HashSet::new();
+    unsafe {
+        let _ = EnumWindows(Some(cb), LPARAM(&mut pids as *mut _ as isize));
+    }
+    pids
+}
+
 #[cfg(windows)]
 pub fn fg_pid() -> u32 {
     use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};

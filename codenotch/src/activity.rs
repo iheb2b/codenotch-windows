@@ -549,15 +549,24 @@ fn provider_for_process(name: &str) -> Option<&'static str> {
     }
 }
 
-/// Add a quiet "open" presence only when the stronger activity probes did not already report the
-/// provider. This lets Smart mode distinguish a locally open app from an old usage snapshot.
+/// Add a quiet "open" presence only when a provider owns a real application window and the
+/// stronger activity probes did not already report it. Electron background helpers can outlive the
+/// main window, so process presence alone must not keep a closed provider in Smart mode.
 #[cfg(windows)]
 fn add_open_providers(all: &mut Vec<Activity>, p: Presence) {
     let maps = crate::focus::proc_maps();
+    let window_pids = crate::focus::app_window_pids();
     let mut open = std::collections::HashSet::new();
-    for name in maps.name.values() {
+    for (pid, name) in &maps.name {
+        if !window_pids.contains(pid) {
+            continue;
+        }
         if let Some(provider) = provider_for_process(name) {
             open.insert(provider);
+        }
+        // The packaged Codex desktop surface currently runs as ChatGPT.exe.
+        if p.codex && name == "chatgpt.exe" {
+            open.insert("codex");
         }
         // VS Code is a Copilot surface only after an extension/CLI/app presence check succeeds;
         // Code.exe alone must never make Copilot appear installed.

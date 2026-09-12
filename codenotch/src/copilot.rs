@@ -267,7 +267,8 @@ pub fn start(app: AppHandle) {
     std::thread::spawn(move || loop {
         let prev = {
             let st = app.state::<AppState>();
-            st.copilot.lock().unwrap().clone()
+            let snapshot = st.copilot.lock().unwrap().clone();
+            snapshot
         };
         let snap = read_once(&prev);
         if matches!(snap.status.as_str(), "stale" | "error") {

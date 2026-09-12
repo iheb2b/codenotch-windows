@@ -387,12 +387,14 @@ fn get_approvals(state: tauri::State<AppState>) -> Vec<approvals::PendingApprova
 fn resolve_approval(app: AppHandle, id: String, decision: String) -> bool {
     let changed = {
         let st = app.state::<AppState>();
-        st.approvals.lock().unwrap().resolve(&id, &decision)
+        let changed = st.approvals.lock().unwrap().resolve(&id, &decision);
+        changed
     };
     if changed {
         let pending = {
             let st = app.state::<AppState>();
-            st.approvals.lock().unwrap().list()
+            let pending = st.approvals.lock().unwrap().list();
+            pending
         };
         let _ = app.emit("approvals", pending);
     }

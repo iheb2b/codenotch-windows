@@ -46,7 +46,8 @@ pub fn start(app: AppHandle, port: u16) {
                 .unwrap_or_default();
             let expected = {
                 let state = app.state::<AppState>();
-                state.cfg.lock().unwrap().bridge_token.clone()
+                let token = state.cfg.lock().unwrap().bridge_token.clone();
+                token
             };
             if expected.is_empty() || supplied != expected {
                 let _ = req
@@ -75,12 +76,14 @@ pub fn start(app: AppHandle, port: u16) {
                 let provider = query_param(&url, "provider");
                 let accepted = {
                     let state = app.state::<AppState>();
-                    state.approvals.lock().unwrap().queue(&id, &provider, &body)
+                    let accepted = state.approvals.lock().unwrap().queue(&id, &provider, &body);
+                    accepted
                 };
                 if accepted {
                     let pending = {
                         let state = app.state::<AppState>();
-                        state.approvals.lock().unwrap().list()
+                        let pending = state.approvals.lock().unwrap().list();
+                        pending
                     };
                     let _ = app.emit("approvals", pending);
                 }

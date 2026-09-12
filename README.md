@@ -79,6 +79,26 @@ version is published. Extract the ZIP and run `Codenotch.exe`.
 Every release also includes the standalone executables, release notes, and SHA-256 checksums on the
 [Releases page](https://github.com/iheb2b/codenotch-windows/releases/latest).
 
+### Smart App Control and Windhawk
+
+If Windows says **“Smart App Control has blocked part of this app”**, first inspect
+**Event Viewer → Applications and Services Logs → Microsoft → Windows → CodeIntegrity → Operational**.
+That message identifies a secondary file another program tried to load; it does not necessarily mean
+that Codenotch itself was blocked.
+
+Windhawk injects its engine into processes by default. If the event names
+`Program Files\Windhawk\...\windhawk.dll`, keep Smart App Control enabled and add these entries to
+**Windhawk → Settings → Advanced settings → More advanced settings → Process exclusion list**:
+
+```text
+Codenotch.exe
+msedgewebview2.exe
+```
+
+Restart Windhawk and Codenotch afterward. Excluded processes are unaffected by Windhawk, while the
+rest of your Windhawk customizations continue to work. Codenotch's own `doctor` command reports this
+compatibility condition when Windhawk is installed.
+
 ### Icons
 
 Claude and Cursor use the unmodified app icons from their official press/brand kits. Codex uses

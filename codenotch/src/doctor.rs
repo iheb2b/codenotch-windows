@@ -91,6 +91,25 @@ pub fn run() -> String {
     o += &format!("\nprovider glyphs:\n{}\n", crate::glyphs::probe());
     o += &format!("\nworking state:\n  {}\n", crate::activity::probe());
 
+    #[cfg(windows)]
+    {
+        let windhawk = ["ProgramFiles", "ProgramFiles(x86)"]
+            .into_iter()
+            .filter_map(std::env::var_os)
+            .map(PathBuf::from)
+            .map(|p| p.join("Windhawk"))
+            .find(|p| p.exists());
+        o += "\ncompatibility:\n";
+        if let Some(path) = windhawk {
+            o += &format!(
+                "  Windhawk detected at {}. If Smart App Control reports that part of Codenotch was blocked, add Codenotch.exe and msedgewebview2.exe to Windhawk Settings > Advanced settings > More advanced settings > Process exclusion list. Keep Smart App Control enabled.\n",
+                path.display()
+            );
+        } else {
+            o += "  Windhawk: not detected\n";
+        }
+    }
+
     o += "\nwatch.log (the most recent watcher log, if any):\n";
     if let Some(dir) = dirs::config_dir() {
         let p = dir.join("codenotch").join("watch.log");

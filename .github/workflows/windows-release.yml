@@ -3,7 +3,9 @@ name: Build Windows app
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches:
+      - main
+      - "feature/**"
     tags:
       - "v*"
   pull_request:

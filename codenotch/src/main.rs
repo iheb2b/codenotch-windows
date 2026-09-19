@@ -28,7 +28,7 @@ use tauri::{AppHandle, Emitter, Manager};
 /// Logical size of the notch window: the enlarged rail on the right plus room for the hover card.
 pub const NOTCH_W: f64 = 480.0;
 /// Hand-bumped build tag, written to run.log at startup so a log can always be matched to the exe that wrote it.
-pub const BUILD: &str = "v0.4.2-window-presence";
+pub const BUILD: &str = "v0.4.3-preview-parity";
 pub const NOTCH_H: f64 = 680.0; // room for the 125% approval card without clipping its actions
 
 pub struct AppState {

@@ -1,6 +1,6 @@
 [package]
 name = "codenotch-hook"
-version = "0.4.2"
+version = "0.4.3"
 edition = "2021"
 description = "Codenotch hook launcher: Claude Code activity and one-shot approval relay"
 license = "MIT"

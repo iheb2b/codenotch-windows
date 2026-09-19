@@ -2,10 +2,10 @@
 //!
 //! Rule: **no vendor logo is drawn by hand here**; only existing artwork is used, in this order:
 //!   1. User override: `%APPDATA%\codenotch\glyphs\<id>.svg|.png`, or `glyphs\` next to the exe;
-//!   2. The installed/running application's own icon (PrivateExtractIconsW on the exe resources,
-//!      64 px → PNG);
-//!   3. Built in: original provider artwork compiled into the exe from each provider's official
+//!   2. Built in: original provider artwork compiled into the exe from each provider's official
 //!      press/brand kit (and the installed Codex Windows package); provenance in glyphs/NOTICE.md;
+//!   3. The installed/running application's own icon (PrivateExtractIconsW on the exe resources,
+//!      64 px → PNG) only when built-in artwork is unavailable;
 //!   none of those → the page falls back to a letter.
 //! Trusted built-in SVGs are inlined into the DOM; user SVGs, PNGs and app icons go through <img>
 //! so user-provided markup never enters the document. Official brand icons use `brandicon` so the
@@ -425,15 +425,18 @@ pub fn collect() -> HashMap<String, Glyph> {
             }
         }
         if found.is_none() {
+            found = built_in(id);
+        }
+        // Keep the packaged app pixel-identical to the HTML preview. Executable resources vary by
+        // installation channel and version (some are monochrome or padded differently), so they
+        // are a final fallback rather than silently replacing the curated brand artwork.
+        if found.is_none() {
             for exe in app_candidates(id) {
                 if let Some(g) = from_exe(&exe) {
                     found = Some(g);
                     break;
                 }
             }
-        }
-        if found.is_none() {
-            found = built_in(id);
         }
         if let Some(g) = found {
             map.insert(id.to_string(), g);

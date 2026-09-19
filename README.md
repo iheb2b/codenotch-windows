@@ -69,7 +69,7 @@ cargo build --release
 # installer (build the helper first because it is bundled as an app resource)
 cargo build --release --locked -p codenotch-hook
 cd codenotch
-cargo tauri build --bundles nsis -- --locked
+cargo tauri build --bundles nsis --config tauri.release.conf.json -- --locked
 ```
 
 Tray menu: dashboard, settings, refresh now, and quit. Detailed controls live in Settings; logs,

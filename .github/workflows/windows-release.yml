@@ -113,7 +113,7 @@ jobs:
 
       - name: Build app and NSIS installer
         working-directory: codenotch
-        run: cargo tauri build --ci --bundles nsis -- --locked
+        run: cargo tauri build --ci --bundles nsis --config tauri.release.conf.json -- --locked
 
       - name: Package executables
         shell: pwsh

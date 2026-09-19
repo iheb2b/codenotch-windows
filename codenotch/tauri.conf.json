@@ -36,9 +36,6 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
-    "icon": ["icons/icon.ico"],
-    "resources": {
-      "../target/release/codenotch-hook.exe": "codenotch-hook.exe"
-    }
+    "icon": ["icons/icon.ico"]
   }
 }

@@ -40,6 +40,65 @@ pub struct Activity {
     pub detail: String,
     /// ms epoch
     pub since: u64,
+    /// Provider-reported model when the local state exposes it.
+    pub model: String,
+    /// Provider-reported interaction/permission mode, or a truthful surface label.
+    pub mode: String,
+    /// exact | inferred | presence — lets the UI avoid overstating heuristics.
+    pub signal: String,
+}
+
+fn clean_meta(value: Option<&str>, max: usize) -> String {
+    value.unwrap_or("").trim().chars().take(max).collect()
+}
+
+fn cursor_meta(v: &serde_json::Value) -> (String, String) {
+    let model = [
+        "/model/name", "/model/id", "/model", "/modelId",
+        "/selectedModel/name", "/selectedModel/id", "/selectedModel",
+    ]
+    .iter()
+    .find_map(|p| v.pointer(p).and_then(|x| x.as_str()));
+    let mode = ["/mode", "/chatMode", "/agentMode", "/composerMode"]
+        .iter()
+        .find_map(|p| v.pointer(p).and_then(|x| x.as_str()));
+    (clean_meta(model, 80), clean_meta(mode, 40))
+}
+
+fn value_needs_input(value: &serde_json::Value) -> bool {
+    fn norm(s: &str) -> String {
+        s.chars().filter(|c| c.is_ascii_alphanumeric()).flat_map(char::to_lowercase).collect()
+    }
+    fn walk(v: &serde_json::Value, depth: usize) -> bool {
+        if depth > 5 { return false; }
+        match v {
+            serde_json::Value::Object(map) => map.iter().any(|(key, value)| {
+                let key = norm(key);
+                let structural = matches!(key.as_str(),
+                    "type" | "name" | "event" | "eventtype" | "itemtype" | "status" |
+                    "state" | "approvalstatus" | "permissionstatus" | "requesttype");
+                let direct = structural && value.as_str().map(|s| {
+                    let s = norm(s);
+                    s.contains("requestuserinput") || s.contains("approvalrequest") ||
+                    s.contains("permissionrequest") || s.contains("elicitationrequest") ||
+                    s.contains("needsapproval") || s.contains("requiresaction") ||
+                    s.contains("awaitingapproval") || s.contains("awaitinginput")
+                }).unwrap_or(false);
+                direct || walk(value, depth + 1)
+            }),
+            serde_json::Value::Array(items) => items.iter().any(|v| walk(v, depth + 1)),
+            _ => false,
+        }
+    }
+    walk(value, 0)
+}
+
+fn item_needs_input(item_type: &str, item_json: &str) -> bool {
+    let kind = item_type.to_ascii_lowercase();
+    if kind.contains("approval") || kind.contains("permission") || kind.contains("request_user") || kind.contains("elicitation") {
+        return true;
+    }
+    serde_json::from_str(item_json).map(|v| value_needs_input(&v)).unwrap_or(false)
 }
 
 fn now_ms() -> u64 {
@@ -170,6 +229,7 @@ fn cursor_activity(ctx: &mut Ctx) -> Vec<Activity> {
                 .or_else(|| v.get("createdAt").and_then(|x| x.as_f64()))
                 .map(|ms| ms as u64)
                 .unwrap_or_else(now_ms);
+            let (model, mode) = cursor_meta(&v);
             out.push(Activity {
                 provider: "cursor".into(),
                 state: state.into(),
@@ -180,6 +240,9 @@ fn cursor_activity(ctx: &mut Ctx) -> Vec<Activity> {
                     v.get("subtitle").and_then(|x| x.as_str()).unwrap_or("Working").to_string()
                 },
                 since,
+                model,
+                mode,
+                signal: "exact".into(),
             });
         }
         out.sort_by(|a, b| b.since.cmp(&a.since));
@@ -271,13 +334,13 @@ fn codex_turns_in_progress(ctx: &mut Ctx) -> Vec<Activity> {
                 _ => 0,
             };
             // The thread's latest item: freshness, and whether it is waiting for approval
-            let (last_ms, last_type): (Option<i64>, Option<String>) = conn
+            let (last_ms, last_type, last_json): (Option<i64>, Option<String>, Option<String>) = conn
                 .query_row(
-                    "SELECT created_at_ms, item_type FROM thread_items WHERE thread_id = ?1 ORDER BY created_at_ms DESC LIMIT 1",
+                    "SELECT created_at_ms, item_type, item_json FROM thread_items WHERE thread_id = ?1 ORDER BY created_at_ms DESC LIMIT 1",
                     [&thread_id],
-                    |r| Ok((r.get::<_, Option<i64>>(0)?, r.get::<_, Option<String>>(1)?)),
+                    |r| Ok((r.get::<_, Option<i64>>(0)?, r.get::<_, Option<String>>(1)?, r.get::<_, Option<String>>(2)?)),
                 )
-                .unwrap_or((None, None));
+                .unwrap_or((None, None, None));
             let last = last_ms.map(|v| v as u64).unwrap_or(started_ms);
             let fresh = now.saturating_sub(last) <= 10 * 60_000 || now.saturating_sub(started_ms) <= 2 * 60_000;
             if !fresh {
@@ -304,14 +367,17 @@ fn codex_turns_in_progress(ctx: &mut Ctx) -> Vec<Activity> {
             if name.is_empty() {
                 name = "Codex".into();
             }
-            let lt = last_type.unwrap_or_default().to_lowercase();
-            let waiting = lt.contains("approval") || lt.contains("permission") || lt.contains("request_user");
+            let lt = last_type.unwrap_or_default();
+            let waiting = item_needs_input(&lt, last_json.as_deref().unwrap_or(""));
             out.push(Activity {
                 provider: "codex".into(),
                 state: if waiting { "waiting" } else { "busy" }.into(),
                 name,
                 detail: if waiting { "needs your input".into() } else { "Working".into() },
                 since: started_ms,
+                model: String::new(),
+                mode: String::new(),
+                signal: "exact".into(),
             });
         }
         Some(out)
@@ -354,7 +420,8 @@ fn codex_activity(ctx: &mut Ctx) -> Vec<Activity> {
                 CodexStep::Aborted => false,
             };
             if busy {
-                ctx.rollout_last = vec![Activity { provider: "codex".into(), state: "busy".into(), name: "Codex".into(), detail: "Working".into(), since: at }];
+                let context = crate::codex::latest_model_context();
+                ctx.rollout_last = vec![Activity { provider: "codex".into(), state: "busy".into(), name: "Codex".into(), detail: "Working (rollout)".into(), since: at, model: context.as_ref().map(|c| c.model.clone()).unwrap_or_default(), mode: context.as_ref().map(|c| c.mode.clone()).unwrap_or_default(), signal: "inferred".into() }];
             }
         }
     }
@@ -488,7 +555,7 @@ fn claude_activity() -> Vec<Activity> {
     }
     let last = CLAUDE_LAST_ACTIVE.load(std::sync::atomic::Ordering::Relaxed);
     if last > 0 && now.saturating_sub(last) <= CLAUDE_HOLD_MS {
-        vec![Activity { provider: "claude".into(), state: "busy".into(), name: "Claude".into(), detail: "Streaming (network)".into(), since: last }]
+        vec![Activity { provider: "claude".into(), state: "busy".into(), name: "Claude Desktop".into(), detail: "Activity detected (network)".into(), since: last, model: String::new(), mode: "Desktop".into(), signal: "inferred".into() }]
     } else {
         vec![]
     }
@@ -510,7 +577,7 @@ fn antigravity_activity() -> Vec<Activity> {
     if now_ms().saturating_sub(at) > ANTIGRAVITY_STALE_MS {
         return vec![];
     }
-    vec![Activity { provider: "gemini".into(), state: "busy".into(), name: "Antigravity".into(), detail: "Working".into(), since: at }]
+    vec![Activity { provider: "gemini".into(), state: "busy".into(), name: "Antigravity".into(), detail: "Working (recent transcript)".into(), since: at, model: String::new(), mode: String::new(), signal: "inferred".into() }]
 }
 
 // ---------------- Putting it together ----------------
@@ -588,6 +655,15 @@ fn add_open_providers(all: &mut Vec<Activity>, p: Presence) {
                 name: label.into(),
                 detail: "Open".into(),
                 since: 0,
+                model: String::new(),
+                mode: match id {
+                    "claude" => "Desktop",
+                    "cursor" => "Editor",
+                    "copilot" => "VS Code",
+                    "codex" => "Desktop",
+                    _ => "",
+                }.into(),
+                signal: "presence".into(),
             });
         }
     }
@@ -614,7 +690,7 @@ fn read_all(p: Presence, ctx: &mut Ctx) -> Vec<Activity> {
 
 #[cfg(test)]
 mod tests {
-    use super::provider_for_process;
+    use super::{cursor_meta, item_needs_input, provider_for_process};
 
     #[test]
     fn classifies_only_real_provider_processes() {
@@ -628,6 +704,22 @@ mod tests {
         assert_eq!(provider_for_process("codenotch.exe"), None);
         assert_eq!(provider_for_process("chatgpt.exe"), None);
         assert_eq!(provider_for_process("codex-command-runner-0.1.exe"), None);
+    }
+
+    #[test]
+    fn detects_only_structured_pending_input_signals() {
+        assert!(item_needs_input("event", r#"{"type":"request_user_input"}"#));
+        assert!(item_needs_input("McpToolCall", r#"{"payload":{"name":"elicitation_request"}}"#));
+        assert!(item_needs_input("tool", r#"{"approval_status":"needsApproval"}"#));
+        assert!(!item_needs_input("message", r#"{"content":"please request user approval in the docs"}"#));
+        assert!(!item_needs_input("McpToolCall", r#"{"status":"completed"}"#));
+    }
+
+    #[test]
+    fn reads_cursor_model_and_mode_without_inventing_them() {
+        let v = serde_json::json!({"selectedModel":{"name":"claude-4.5-sonnet"},"mode":"agent"});
+        assert_eq!(cursor_meta(&v), ("claude-4.5-sonnet".into(), "agent".into()));
+        assert_eq!(cursor_meta(&serde_json::json!({"name":"chat"})), (String::new(), String::new()));
     }
 }
 

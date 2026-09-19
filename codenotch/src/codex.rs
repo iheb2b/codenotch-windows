@@ -382,6 +382,112 @@ pub fn latest_model_info() -> Option<(String, String)> {
     None
 }
 
+/// Model and permission context exposed by the Codex desktop databases. Unlike the rollout
+/// fallback above, this is tied to the currently active thread when one exists and therefore does
+/// not show a model or mode from an unrelated old conversation.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ModelContext {
+    pub model: String,
+    pub effort: String,
+    pub mode: String,
+    pub active: bool,
+}
+
+fn clipped_field(value: String, max: usize) -> String {
+    value.trim().chars().take(max).collect()
+}
+
+fn sandbox_label(raw: &str) -> String {
+    let lower = raw.to_ascii_lowercase();
+    if lower.contains("danger") || lower.contains("fullaccess") || lower.contains("full-access") {
+        "Full access".into()
+    } else if lower.contains("workspace") {
+        "Workspace".into()
+    } else if lower.contains("readonly") || lower.contains("read-only") {
+        "Read only".into()
+    } else {
+        String::new()
+    }
+}
+
+fn approval_label(raw: &str) -> String {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "ask" | "on-request" | "on_request" | "untrusted" => "Ask".into(),
+        "never" => "No prompts".into(),
+        "on-failure" | "on_failure" => "On failure".into(),
+        other => other.chars().take(24).collect(),
+    }
+}
+
+fn combined_mode(approval: &str, sandbox: &str) -> String {
+    let approval = approval_label(approval);
+    let sandbox = sandbox_label(sandbox);
+    match (approval.is_empty(), sandbox.is_empty()) {
+        (false, false) => format!("{approval} · {sandbox}"),
+        (false, true) => approval,
+        (true, false) => sandbox,
+        (true, true) => String::new(),
+    }
+}
+
+fn context_row(conn: &rusqlite::Connection, id: Option<&str>) -> Option<ModelContext> {
+    let sql = if id.is_some() {
+        "SELECT COALESCE(model,''), COALESCE(reasoning_effort,''), COALESCE(approval_mode,''), COALESCE(sandbox_policy,'') FROM threads WHERE id = ?1 LIMIT 1"
+    } else {
+        "SELECT COALESCE(model,''), COALESCE(reasoning_effort,''), COALESCE(approval_mode,''), COALESCE(sandbox_policy,'') FROM threads ORDER BY recency_at_ms DESC LIMIT 1"
+    };
+    let row = if let Some(id) = id {
+        conn.query_row(sql, [id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?))).ok()
+    } else {
+        conn.query_row(sql, [], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?))).ok()
+    }?;
+    let model = clipped_field(row.0, 80);
+    if model.is_empty() {
+        return None;
+    }
+    Some(ModelContext {
+        model,
+        effort: clipped_field(row.1, 24),
+        mode: combined_mode(&row.2, &row.3),
+        active: id.is_some(),
+    })
+}
+
+pub fn latest_model_context() -> Option<ModelContext> {
+    use rusqlite::OpenFlags;
+    let home = dirs::home_dir()?;
+    let state = rusqlite::Connection::open_with_flags(
+        home.join(".codex").join("state_5.sqlite"),
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    ).ok()?;
+    let history = rusqlite::Connection::open_with_flags(
+        home.join(".codex").join("thread_history_1.sqlite"),
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    ).ok();
+    if let Some(history) = history {
+        if let Ok(mut stmt) = history.prepare(
+            "SELECT thread_id FROM thread_turns WHERE status = 'inProgress' ORDER BY started_at DESC LIMIT 8",
+        ) {
+            if let Ok(rows) = stmt.query_map([], |r| r.get::<_, String>(0)) {
+                for id in rows.flatten() {
+                    if let Some(ctx) = context_row(&state, Some(&id)) {
+                        return Some(ctx);
+                    }
+                }
+            }
+        }
+    }
+    context_row(&state, None).map(|mut ctx| {
+        ctx.active = false;
+        ctx
+    }).or_else(|| latest_model_info().map(|(model, effort)| ModelContext {
+        model,
+        effort,
+        mode: String::new(),
+        active: false,
+    }))
+}
+
 /// The last rate_limits snapshot at the tail of a rollout → (windows, recorded-at ms, plan)
 pub fn snapshot_from_rollout(
     text: &str,
@@ -643,4 +749,17 @@ pub fn probe() -> String {
             .unwrap_or_else(|| "none".into()),
         age
     )
+}
+
+#[cfg(test)]
+mod context_tests {
+    use super::{approval_label, combined_mode, sandbox_label};
+
+    #[test]
+    fn presents_codex_permission_context_compactly() {
+        assert_eq!(approval_label("on-request"), "Ask");
+        assert_eq!(sandbox_label(r#"{"type":"workspaceWrite"}"#), "Workspace");
+        assert_eq!(combined_mode("never", r#"{"type":"readOnly"}"#), "No prompts · Read only");
+        assert_eq!(combined_mode("", ""), "");
+    }
 }

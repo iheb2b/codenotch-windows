@@ -132,6 +132,11 @@ fn parse(url: &str, body: &str) -> HookEvent {
         tool_name: s("tool_name"),
         tool_cmd,
         model: s("model"),
+        mode: s("mode"),
+        permission_mode: {
+            let camel = s("permissionMode");
+            if camel.is_empty() { s("permission_mode") } else { camel }
+        },
         src: "hook",
     }
 }

@@ -37,6 +37,10 @@ pub struct Session {
     pub prompt: String,
     /// The model the session actually uses (message.model of a transcript assistant entry)
     pub model: String,
+    /// Provider-reported interaction mode (for example normal / plan).
+    pub mode: String,
+    /// Provider-reported permission policy (for example auto / ask).
+    pub permission_mode: String,
     #[serde(skip)]
     pub ppid: u32,
     #[serde(skip)]
@@ -79,6 +83,8 @@ pub struct HookEvent {
     pub tool_name: String,
     pub tool_cmd: String,
     pub model: String,
+    pub mode: String,
+    pub permission_mode: String,
     /// "hook" (a real event) or "watch" (transcript inference, the desktop app's fallback)
     pub src: &'static str,
 }
@@ -121,6 +127,8 @@ impl Store {
                 attn: String::new(),
                 prompt: String::new(),
                 model: String::new(),
+                mode: String::new(),
+                permission_mode: String::new(),
                 ppid: 0,
                 last_event: now,
                 cwd: ev.cwd.clone(),
@@ -139,6 +147,8 @@ impl Store {
             s.attn.clone(),
             s.prompt.clone(),
             s.model.clone(),
+            s.mode.clone(),
+            s.permission_mode.clone(),
         );
         s.last_event = now;
         if ev.ppid != 0 {
@@ -146,6 +156,12 @@ impl Store {
         }
         if !ev.model.is_empty() {
             s.model = ev.model.clone();
+        }
+        if !ev.mode.is_empty() {
+            s.mode = ev.mode.clone();
+        }
+        if !ev.permission_mode.is_empty() {
+            s.permission_mode = ev.permission_mode.clone();
         }
         if !ev.cwd.is_empty() && s.cwd.is_empty() {
             s.cwd = ev.cwd.clone();
@@ -196,6 +212,8 @@ impl Store {
             s.attn.clone(),
             s.prompt.clone(),
             s.model.clone(),
+            s.mode.clone(),
+            s.permission_mode.clone(),
         ) != before
     }
 

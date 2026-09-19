@@ -61,6 +61,8 @@ struct Trk {
     interrupted: bool,
     prompt: String,
     model: String,
+    mode: String,
+    permission_mode: String,
 }
 
 fn now_ms() -> u64 {
@@ -227,6 +229,10 @@ pub struct TailInfo {
     pub prompt: String,
     /// The session's actual model (message.model of an assistant entry)
     pub model: String,
+    /// Provider-reported interaction mode from the transcript.
+    pub mode: String,
+    /// Provider-reported permission policy from the transcript.
+    pub permission_mode: String,
 }
 
 /// User input text: content is a string, or the text blocks of an array; entries with tool_result do not count
@@ -270,6 +276,8 @@ pub fn tail_info(path: &Path) -> Option<TailInfo> {
     let mut entry: Option<serde_json::Value> = None;
     let mut prompt = String::new();
     let mut model = String::new();
+    let mut mode = String::new();
+    let mut permission_mode = String::new();
     for line in buf.lines().rev().filter(|l| !l.trim().is_empty()).take(80) {
         let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
             continue;
@@ -286,12 +294,23 @@ pub fn tail_info(path: &Path) -> Option<TailInfo> {
                 model = m.to_string();
             }
         }
+        if mode.is_empty() {
+            mode = v.get("mode").and_then(|x| x.as_str()).unwrap_or("").to_string();
+        }
+        if permission_mode.is_empty() {
+            permission_mode = v
+                .get("permissionMode")
+                .or_else(|| v.get("permission_mode"))
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string();
+        }
         if prompt.is_empty() && t == "user" {
             if let Some(p) = user_text(&v) {
                 prompt = p;
             }
         }
-        if entry.is_some() && !model.is_empty() && !prompt.is_empty() {
+        if entry.is_some() && !model.is_empty() && !prompt.is_empty() && !mode.is_empty() && !permission_mode.is_empty() {
             break;
         }
     }
@@ -299,6 +318,8 @@ pub fn tail_info(path: &Path) -> Option<TailInfo> {
         entry: e,
         prompt,
         model,
+        mode,
+        permission_mode,
     })
 }
 
@@ -369,6 +390,8 @@ fn ingest(app: &AppHandle, tracks: &mut HashMap<PathBuf, Trk>, path: &Path) {
         interrupted: false,
         prompt: String::new(),
         model: String::new(),
+        mode: String::new(),
+        permission_mode: String::new(),
     });
     t.session = session;
     if !cwd.is_empty() {
@@ -382,6 +405,12 @@ fn ingest(app: &AppHandle, tracks: &mut HashMap<PathBuf, Trk>, path: &Path) {
     }
     if !info.model.is_empty() {
         t.model = info.model;
+    }
+    if !info.mode.is_empty() {
+        t.mode = info.mode;
+    }
+    if !info.permission_mode.is_empty() {
+        t.permission_mode = info.permission_mode;
     }
     // Push running on every append (prompt/model updates travel with it);
     // whether it is actually broadcast is decided by state.apply's visible-change check
@@ -488,6 +517,8 @@ fn push(app: &AppHandle, e: &str, t: &Trk) {
         tool_name: String::new(),
         tool_cmd: String::new(),
         model: t.model.clone(),
+        mode: t.mode.clone(),
+        permission_mode: t.permission_mode.clone(),
         src: "watch",
     };
     let changed = {
@@ -497,5 +528,25 @@ fn push(app: &AppHandle, e: &str, t: &Trk) {
     };
     if changed {
         crate::broadcast(app);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::tail_info;
+
+    #[test]
+    fn carries_claude_model_mode_and_permission_policy() {
+        let path = std::env::temp_dir().join(format!("codenotch-claude-tail-{}.jsonl", std::process::id()));
+        let rows = concat!(
+            r#"{"type":"user","sessionId":"s","mode":"normal","permissionMode":"auto","message":{"content":"hello"}}"#, "\n",
+            r#"{"type":"assistant","sessionId":"s","message":{"model":"claude-sonnet-5","content":[{"type":"text","text":"hi"}]}}"#, "\n"
+        );
+        std::fs::write(&path, rows).unwrap();
+        let info = tail_info(&path).unwrap();
+        assert_eq!(info.model, "claude-sonnet-5");
+        assert_eq!(info.mode, "normal");
+        assert_eq!(info.permission_mode, "auto");
+        let _ = std::fs::remove_file(path);
     }
 }

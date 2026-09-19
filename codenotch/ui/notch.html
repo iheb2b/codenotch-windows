@@ -271,13 +271,13 @@ if(PREVIEW){
       cursor:{kind:'brandicon',url:'../glyphs/cursor-original.png',svg:'',source:'Cursor official brand kit'},
       copilot:{kind:'brandicon',url:'',svg:'<svg viewBox="0 0 128 128"><path fill="white" d="M56.8 85C44.4 83.5 35.7 74.6 35.7 63c0-4.7 1.7-9.7 4.5-13.1-1.2-3.1-1-9.7.4-12.4 3.7-.5 8.8 1.5 11.8 4.2 3.6-1.1 7.3-1.7 11.9-1.7s8.3.6 11.7 1.6c2.9-2.6 8.1-4.6 11.8-4.1 1.3 2.5 1.5 9.1.3 12.3 3 3.6 4.6 8.3 4.6 13.2 0 11.5-8.7 20.3-21.3 21.9 3.2 2.1 5.4 6.6 5.4 11.7v9.7c0 2.8 2.3 4.4 5.1 3.3 17-6.5 30.3-23.4 30.3-44.4C112.2 38.7 90.6 17 64.1 17S16.2 38.7 16.2 65.2c0 20.8 13.2 38.1 31 44.5 2.5.9 5-.7 5-3.3v-7.5c-1.3.6-3 .9-4.5.9-6.2 0-9.8-3.4-12.5-9.7-1-2.5-2.1-4-4.3-4.3-1.1-.1-1.5-.6-1.5-1.1 0-1.1 1.9-2 3.8-2 2.7 0 5.1 1.7 7.5 5.2 1.9 2.7 3.8 3.9 6.2 3.9s3.8-.8 6-3c1.6-1.6 2.8-3 3.9-3.9Z"/></svg>',source:'GitHub official brand kit'}
     },
-    get_provider_models:{codex:{model:'gpt-6-astra',effort:'high'}},
+    get_provider_models:{codex:{model:'gpt-6-astra',effort:'high',mode:'Ask · Workspace',active:true,source:'Codex local state'}},
     get_notch_slots:[],get_notch_mode:'smart',
     get_state:{sessions:[{id:'claude-demo',title:'Review the new command palette',state:'attention',started:now-7*60000,model:'claude-sonnet-4-5'}],agg:'attention',lang_resolved:'en'},open_dashboard:true,
     get_activity:[
-      {provider:'codex',state:'waiting',name:'Build the Windows release',detail:'needs your input',since:now-12*60000},
-      {provider:'cursor',state:'busy',name:'Polish the dashboard layout',detail:'Working',since:now-4*60000},
-      {provider:'copilot',state:'open',name:'GitHub Copilot',detail:'Open in VS Code',since:0}
+      {provider:'codex',state:'waiting',name:'Build the Windows release',detail:'needs your input',since:now-12*60000,model:'gpt-6-astra',mode:'Ask · Workspace',signal:'exact'},
+      {provider:'cursor',state:'busy',name:'Polish the dashboard layout',detail:'Working',since:now-4*60000,model:'claude-4.5-sonnet',mode:'Agent',signal:'exact'},
+      {provider:'copilot',state:'open',name:'GitHub Copilot',detail:'Open in VS Code',since:0,model:'',mode:'VS Code',signal:'presence'}
     ]
   };
   window.__TAURI__={core:{invoke:(cmd,args)=>{
@@ -582,25 +582,33 @@ function elapsedCopy(ms){
 function activeInfo(p){
   const approval=pendingApprovals.find(a=>a.provider===p.id);
   if(approval) return {state:'attention',name:approval.summary||approval.tool_name||p.name,since:approval.requested_at||0,sessionId:approval.session_id||'',approval};
+  let completedClaude=null;
   if(p.id==='claude'){
     const rows=(stateSnap.sessions||[]).filter(s=>s.state!=='idle');
-    const s=rows.find(x=>x.state==='attention')||rows.find(x=>x.state==='running')||rows[0];
-    if(s) return {state:s.state==='attention'?'attention':s.state==='running'?'running':'done',name:s.title||p.name,since:s.started||0,sessionId:s.id||''};
+    const s=rows.find(x=>x.state==='attention')||rows.find(x=>x.state==='running');
+    if(s) return {state:s.state==='attention'?'attention':s.state==='running'?'running':'done',name:s.title||p.name,since:s.started||0,sessionId:s.id||'',detail:s.attn||s.last||'',signal:s.state==='attention'?'inferred':'exact',session:s};
+    completedClaude=rows.find(x=>x.state==='done')||null;
   }
   const rows=activity.filter(a=>a.provider===p.id);
   const a=rows.find(x=>x.state==='waiting')||rows.find(x=>x.state==='busy')||rows.find(x=>x.state==='open');
-  if(a) return {state:a.state==='waiting'?'attention':a.state==='busy'?'running':'open',name:a.name||p.name,since:a.since||0,sessionId:''};
+  if(a) return {state:a.state==='waiting'?'attention':a.state==='busy'?'running':'open',name:a.name||p.name,since:a.since||0,sessionId:'',detail:a.detail||'',signal:a.signal||'inferred',activity:a};
+  if(completedClaude) return {state:'done',name:completedClaude.title||p.name,since:completedClaude.started||0,sessionId:completedClaude.id||'',detail:completedClaude.last||'',signal:'exact',session:completedClaude};
   return {state:'idle',name:p.name,since:0,sessionId:''};
 }
 
 let hoverId=PREVIEW_PARAMS.get('provider')||'codex';
-function modelFor(p){
+function contextFor(p,info){
   if(p.id==='claude'){
-    const sessions=(stateSnap.sessions||[]).filter(s=>s&&s.model&&s.state!=='idle');
-    if(sessions.length) return {model:sessions[0].model,effort:''};
+    const s=info&&info.session;
+    if(s&&(s.model||s.mode||s.permission_mode)){
+      const modes=[s.mode,s.permission_mode].filter(Boolean);
+      return {model:s.model||'',effort:'',mode:[...new Set(modes)].join(' · '),active:info.state!=='done',source:'Claude transcript'};
+    }
   }
-  const info=providerModels[p.id];
-  return info&&info.model?info:null;
+  const a=info&&info.activity;
+  if(a&&(a.model||a.mode)) return {model:a.model||'',effort:'',mode:a.mode||'',active:a.state!=='open',source:a.signal||''};
+  const stored=providerModels[p.id];
+  return stored&&(stored.model||stored.mode)?stored:null;
 }
 function friendlyModel(model){
   if(!model) return '';
@@ -620,23 +628,23 @@ function renderCard(){
   const p=providers().find(x=>x.id===hoverId)||providers()[0];
   const snap=p.snap;
   const info=activeInfo(p);
-  const currentModel=modelFor(p),headline=headlineOf(snap,p.id),insight=usageInsight(snap);
+  const currentModel=contextFor(p,info),headline=headlineOf(snap,p.id),insight=usageInsight(snap);
   const headlineText=headline?(headline.count!=null?'~'+headline.count:(headline.derived?'~':'')+Math.round(headline.used*100)+'%'):'—';
   let meta='';
-  if(currentModel){
-    meta=`<span class="model-name">${esc(friendlyModel(currentModel.model))}</span>${currentModel.effort?`<span class="effort-chip">${esc(currentModel.effort)}</span>`:''}`;
+  if(currentModel&&currentModel.model){
+    meta=`<span class="model-name">${currentModel.active===false?'Last: ':''}${esc(friendlyModel(currentModel.model))}</span>${currentModel.effort?`<span class="effort-chip">${esc(currentModel.effort)}</span>`:''}${currentModel.mode?`<span class="effort-chip">${esc(currentModel.mode)}</span>`:''}`;
   }else{
-    const unavailable={claude:'Model appears with an active session',cursor:'Model not exposed by Cursor',copilot:'Model appears in Copilot',gemini:'Model-group quota'};
-    meta=`<span class="model-name">${unavailable[p.id]||'Model details unavailable'}</span>`;
+    const unavailable={claude:providerIsOpen('claude')?'Model not exposed by Claude Desktop':'Model appears with an active Claude Code session',cursor:'Model appears during an active Cursor run',copilot:'Model not exposed by GitHub Copilot',gemini:'Model-group quota'};
+    meta=`<span class="model-name">${unavailable[p.id]||'Model details unavailable'}</span>${currentModel&&currentModel.mode?`<span class="effort-chip">${esc(currentModel.mode)}</span>`:''}`;
   }
   if(staleOf(snap)&&snap.fetched_at) meta+=`<span class="effort-chip">${esc(ago(snap.fetched_at))}</span>`;
   let html=`<div class="c-head"><div class="head-icon">${glyphHtml(p)}</div><div class="c-identity"><div class="c-title">${esc(p.name)}</div><div class="model-line">${meta}</div></div><div class="headline-num">${headlineText}<small>highest</small></div></div>`;
   if(insight) html+=`<div class="usage-insight"><div class="insight-copy"><b>${esc(insight.label)}</b> · ${esc(insight.text)}</div></div>`;
-  const stateLabel=info.state==='attention'?(uiLang==='ru'?'Требуется ваше подтверждение':info.approval?'Approval ready here':'Needs your approval')
-    :info.state==='running'?(uiLang==='ru'?'Работает сейчас':'Working now')
+  const stateLabel=info.state==='attention'?(uiLang==='ru'?'Требуется ваше внимание':info.approval?'Approval ready here':info.signal==='exact'?'Needs your attention':'May need your attention')
+    :info.state==='running'?(uiLang==='ru'?'Работает сейчас':info.signal==='inferred'?'Activity detected':'Working now')
     :info.state==='open'?(uiLang==='ru'?'Приложение открыто':'App is open')
     :(uiLang==='ru'?'Готово к работе':'Ready');
-  html+=`<div class="status-hero ${info.state}"><div class="status-copy"><div class="status-name">${esc(stateLabel)}</div><div class="status-meta">${esc(info.name)}${info.since?' · '+elapsedCopy(info.since):''}</div></div></div>`;
+  html+=`<div class="status-hero ${info.state}"><div class="status-copy"><div class="status-name">${esc(stateLabel)}</div><div class="status-meta">${esc(info.name)}${info.detail?' · '+esc(info.detail):''}${info.since?' · '+elapsedCopy(info.since):''}</div></div></div>`;
   if(snap.status==='needsAuth'){
     const who={claude:'Sign in to Claude Code to see usage.',cursor:'Sign in to Cursor to see usage.',codex:'Sign in to Codex to see usage.',copilot:'Sign in to GitHub Copilot CLI to see quota.',gemini:'Sign in to Antigravity to see usage.'}[p.id]||'';
     html+=`<div class="c-note">${textCopy(who)}<br>${esc(textCopy(snap.note||''))}</div>`;

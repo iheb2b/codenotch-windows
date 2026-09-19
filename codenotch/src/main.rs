@@ -28,7 +28,7 @@ use tauri::{AppHandle, Emitter, Manager};
 /// Logical size of the notch window: the enlarged rail on the right plus room for the hover card.
 pub const NOTCH_W: f64 = 480.0;
 /// Hand-bumped build tag, written to run.log at startup so a log can always be matched to the exe that wrote it.
-pub const BUILD: &str = "v0.4.3-preview-parity";
+pub const BUILD: &str = "v0.4.4-provider-context";
 pub const NOTCH_H: f64 = 680.0; // room for the 125% approval card without clipping its actions
 
 pub struct AppState {
@@ -295,6 +295,9 @@ fn get_glyphs(state: tauri::State<AppState>) -> std::collections::HashMap<String
 struct ProviderModelInfo {
     model: String,
     effort: String,
+    mode: String,
+    active: bool,
+    source: String,
 }
 
 /// Current model metadata is local, best-effort context—not a fabricated quota. Claude session
@@ -302,10 +305,16 @@ struct ProviderModelInfo {
 #[tauri::command]
 fn get_provider_models() -> std::collections::HashMap<String, ProviderModelInfo> {
     let mut models = std::collections::HashMap::new();
-    if let Some((model, effort)) = codex::latest_model_info() {
+    if let Some(context) = codex::latest_model_context() {
         models.insert(
             "codex".into(),
-            ProviderModelInfo { model, effort },
+            ProviderModelInfo {
+                model: context.model,
+                effort: context.effort,
+                mode: context.mode,
+                active: context.active,
+                source: "Codex local state".into(),
+            },
         );
     }
     models

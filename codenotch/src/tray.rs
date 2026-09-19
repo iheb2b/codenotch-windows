@@ -67,11 +67,7 @@ pub fn refresh_menu(app: &AppHandle) {
 fn handle(app: &AppHandle, id: &str) {
     match id {
         "dashboard" => {
-            if let Some(w) = app.get_webview_window("dashboard") {
-                let _ = w.show();
-                let _ = w.unminimize();
-                let _ = w.set_focus();
-            }
+            let _ = crate::show_aux_window(app, "dashboard");
         }
         "refresh" => {
             {
@@ -88,11 +84,7 @@ fn handle(app: &AppHandle, id: &str) {
             std::thread::spawn(move || crate::reload_glyphs(&a));
         }
         "settings" => {
-            if let Some(w) = app.get_webview_window("settings") {
-                let _ = w.show();
-                let _ = w.unminimize();
-                let _ = w.set_focus();
-            }
+            let _ = crate::show_aux_window(app, "settings");
         }
         "quit" => app.exit(0),
         _ => {}

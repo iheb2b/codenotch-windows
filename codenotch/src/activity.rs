@@ -54,8 +54,13 @@ fn clean_meta(value: Option<&str>, max: usize) -> String {
 
 fn cursor_meta(v: &serde_json::Value) -> (String, String) {
     let model = [
-        "/model/name", "/model/id", "/model", "/modelId",
-        "/selectedModel/name", "/selectedModel/id", "/selectedModel",
+        "/model/name",
+        "/model/id",
+        "/model",
+        "/modelId",
+        "/selectedModel/name",
+        "/selectedModel/id",
+        "/selectedModel",
     ]
     .iter()
     .find_map(|p| v.pointer(p).and_then(|x| x.as_str()));
@@ -67,23 +72,46 @@ fn cursor_meta(v: &serde_json::Value) -> (String, String) {
 
 fn value_needs_input(value: &serde_json::Value) -> bool {
     fn norm(s: &str) -> String {
-        s.chars().filter(|c| c.is_ascii_alphanumeric()).flat_map(char::to_lowercase).collect()
+        s.chars()
+            .filter(|c| c.is_ascii_alphanumeric())
+            .flat_map(char::to_lowercase)
+            .collect()
     }
     fn walk(v: &serde_json::Value, depth: usize) -> bool {
-        if depth > 5 { return false; }
+        if depth > 5 {
+            return false;
+        }
         match v {
             serde_json::Value::Object(map) => map.iter().any(|(key, value)| {
                 let key = norm(key);
-                let structural = matches!(key.as_str(),
-                    "type" | "name" | "event" | "eventtype" | "itemtype" | "status" |
-                    "state" | "approvalstatus" | "permissionstatus" | "requesttype");
-                let direct = structural && value.as_str().map(|s| {
-                    let s = norm(s);
-                    s.contains("requestuserinput") || s.contains("approvalrequest") ||
-                    s.contains("permissionrequest") || s.contains("elicitationrequest") ||
-                    s.contains("needsapproval") || s.contains("requiresaction") ||
-                    s.contains("awaitingapproval") || s.contains("awaitinginput")
-                }).unwrap_or(false);
+                let structural = matches!(
+                    key.as_str(),
+                    "type"
+                        | "name"
+                        | "event"
+                        | "eventtype"
+                        | "itemtype"
+                        | "status"
+                        | "state"
+                        | "approvalstatus"
+                        | "permissionstatus"
+                        | "requesttype"
+                );
+                let direct = structural
+                    && value
+                        .as_str()
+                        .map(|s| {
+                            let s = norm(s);
+                            s.contains("requestuserinput")
+                                || s.contains("approvalrequest")
+                                || s.contains("permissionrequest")
+                                || s.contains("elicitationrequest")
+                                || s.contains("needsapproval")
+                                || s.contains("requiresaction")
+                                || s.contains("awaitingapproval")
+                                || s.contains("awaitinginput")
+                        })
+                        .unwrap_or(false);
                 direct || walk(value, depth + 1)
             }),
             serde_json::Value::Array(items) => items.iter().any(|v| walk(v, depth + 1)),
@@ -95,10 +123,16 @@ fn value_needs_input(value: &serde_json::Value) -> bool {
 
 fn item_needs_input(item_type: &str, item_json: &str) -> bool {
     let kind = item_type.to_ascii_lowercase();
-    if kind.contains("approval") || kind.contains("permission") || kind.contains("request_user") || kind.contains("elicitation") {
+    if kind.contains("approval")
+        || kind.contains("permission")
+        || kind.contains("request_user")
+        || kind.contains("elicitation")
+    {
         return true;
     }
-    serde_json::from_str(item_json).map(|v| value_needs_input(&v)).unwrap_or(false)
+    serde_json::from_str(item_json)
+        .map(|v| value_needs_input(&v))
+        .unwrap_or(false)
 }
 
 fn now_ms() -> u64 {
@@ -118,7 +152,6 @@ fn mtime_ms(p: &std::path::Path) -> Option<u64> {
         .map(|d| d.as_millis() as u64)
 }
 
-
 /// Persistent connection + change gating: the query runs again only when the database file (or its
 /// -wal) changed mtime; otherwise the last result is reused. Cursor's state.vscdb is over 2 GB, and
 /// reopening it every 2 s for a table scan slowed the whole machine (typing lagged).
@@ -132,7 +165,13 @@ struct DbCache {
 
 impl DbCache {
     fn new(path: std::path::PathBuf) -> Self {
-        Self { path, conn: None, sig: (0, 0), last: Vec::new(), checked_once: false }
+        Self {
+            path,
+            conn: None,
+            sig: (0, 0),
+            last: Vec::new(),
+            checked_once: false,
+        }
     }
     fn signature(&self) -> (u64, u64) {
         let wal = {
@@ -140,10 +179,16 @@ impl DbCache {
             o.push("-wal");
             std::path::PathBuf::from(o)
         };
-        (mtime_ms(&self.path).unwrap_or(0), mtime_ms(&wal).unwrap_or(0))
+        (
+            mtime_ms(&self.path).unwrap_or(0),
+            mtime_ms(&wal).unwrap_or(0),
+        )
     }
     /// Calls f only when something changed (or on the first run); f returning None means the query failed → drop the connection and reopen next time
-    fn refresh<F: FnOnce(&rusqlite::Connection) -> Option<Vec<Activity>>>(&mut self, f: F) -> Vec<Activity> {
+    fn refresh<F: FnOnce(&rusqlite::Connection) -> Option<Vec<Activity>>>(
+        &mut self,
+        f: F,
+    ) -> Vec<Activity> {
         let sig = self.signature();
         if self.checked_once && sig == self.sig {
             return self.last.clone();
@@ -177,6 +222,7 @@ struct Ctx {
     rollout_checked_at: u64,
     rollout_sig: u64,
     rollout_last: Vec<Activity>,
+    rollout_step: Option<CodexStep>,
 }
 
 impl Ctx {
@@ -190,6 +236,7 @@ impl Ctx {
             rollout_checked_at: 0,
             rollout_sig: 0,
             rollout_last: Vec::new(),
+            rollout_step: None,
         }
     }
 }
@@ -201,7 +248,11 @@ fn open_ro(path: &std::path::Path) -> Option<rusqlite::Connection> {
     if !path.is_file() {
         return None;
     }
-    rusqlite::Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX).ok()
+    rusqlite::Connection::open_with_flags(
+        path,
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .ok()
 }
 
 fn cursor_activity(ctx: &mut Ctx) -> Vec<Activity> {
@@ -269,9 +320,27 @@ enum CodexStep {
     Aborted,
 }
 
+fn codex_step_is_fresh(step: CodexStep, quiet_ms: u64) -> bool {
+    match step {
+        CodexStep::Tool => quiet_ms <= 10 * 60_000,
+        CodexStep::Thinking => quiet_ms <= 120_000,
+        CodexStep::AsstMsg => quiet_ms <= 4_000,
+        CodexStep::Aborted => false,
+    }
+}
+
+fn codex_turn_is_fresh(waiting: bool, now: u64, last: u64, started: u64) -> bool {
+    // A structured, unresolved input request is authoritative and must not disappear simply
+    // because the user went to lunch. The general activity signal still expires after silence so
+    // a crashed client cannot leave an ordinary "working" row behind forever.
+    waiting || now.saturating_sub(last) <= 10 * 60_000 || now.saturating_sub(started) <= 2 * 60_000
+}
+
 fn codex_last_step(text: &str) -> Option<(CodexStep, u64)> {
     for line in text.lines().rev().filter(|l| !l.trim().is_empty()) {
-        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else { continue };
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue;
+        };
         let ts = v
             .get("timestamp")
             .and_then(|x| x.as_str())
@@ -284,8 +353,12 @@ fn codex_last_step(text: &str) -> Option<(CodexStep, u64)> {
         let step = match kind {
             "turn_context" => Some(CodexStep::Thinking),
             "response_item" => match pt {
-                "function_call" | "local_shell_call" | "custom_tool_call" | "web_search_call" => Some(CodexStep::Tool),
-                "function_call_output" | "custom_tool_call_output" | "reasoning" => Some(CodexStep::Thinking),
+                "function_call" | "local_shell_call" | "custom_tool_call" | "web_search_call" => {
+                    Some(CodexStep::Tool)
+                }
+                "function_call_output" | "custom_tool_call_output" | "reasoning" => {
+                    Some(CodexStep::Thinking)
+                }
                 "message" => match p.get("role").and_then(|x| x.as_str()).unwrap_or("") {
                     "assistant" => Some(CodexStep::AsstMsg),
                     "user" => Some(CodexStep::Thinking),
@@ -318,7 +391,8 @@ fn codex_last_step(text: &str) -> Option<(CodexStep, u64)> {
 fn codex_turns_in_progress(ctx: &mut Ctx) -> Vec<Activity> {
     let now = now_ms();
     if ctx.codex_names.is_none() {
-        ctx.codex_names = dirs::home_dir().and_then(|h| open_ro(&h.join(".codex").join("state_5.sqlite")));
+        ctx.codex_names =
+            dirs::home_dir().and_then(|h| open_ro(&h.join(".codex").join("state_5.sqlite")));
     }
     let names = ctx.codex_names.as_ref();
     ctx.codex_turns.refresh(|conn| {
@@ -342,10 +416,9 @@ fn codex_turns_in_progress(ctx: &mut Ctx) -> Vec<Activity> {
                 )
                 .unwrap_or((None, None, None));
             let last = last_ms.map(|v| v as u64).unwrap_or(started_ms);
-            let fresh = now.saturating_sub(last) <= 10 * 60_000 || now.saturating_sub(started_ms) <= 2 * 60_000;
-            if !fresh {
-                continue;
-            }
+            let lt = last_type.unwrap_or_default();
+            let waiting = item_needs_input(&lt, last_json.as_deref().unwrap_or(""));
+            if !codex_turn_is_fresh(waiting, now, last, started_ms) { continue; }
             let mut name = String::new();
             if let Some(c) = names {
                 if let Ok((title, first, nick)) = c.query_row(
@@ -367,8 +440,6 @@ fn codex_turns_in_progress(ctx: &mut Ctx) -> Vec<Activity> {
             if name.is_empty() {
                 name = "Codex".into();
             }
-            let lt = last_type.unwrap_or_default();
-            let waiting = item_needs_input(&lt, last_json.as_deref().unwrap_or(""));
             out.push(Activity {
                 provider: "codex".into(),
                 state: if waiting { "waiting" } else { "busy" }.into(),
@@ -396,32 +467,48 @@ fn codex_activity(ctx: &mut Ctx) -> Vec<Activity> {
         ctx.rollout_checked_at = now;
         ctx.rollout_path = crate::codex::newest_rollout();
     }
-    let Some(p) = ctx.rollout_path.clone() else { return vec![] };
+    let Some(p) = ctx.rollout_path.clone() else {
+        return vec![];
+    };
     let mtime = mtime_ms(&p).unwrap_or(0);
     if mtime == ctx.rollout_sig {
-        // Content unchanged: only re-evaluate whether the silence has timed out
-        return ctx
-            .rollout_last
-            .iter()
-            .filter(|a| now.saturating_sub(a.since) <= 10 * 60_000)
-            .cloned()
-            .collect();
+        // Content unchanged: retain the last parsed step so each kind keeps its own timeout.
+        // Previously this path used the tool timeout for every step, leaving a final assistant
+        // message falsely "working" for ten minutes.
+        let fresh = ctx
+            .rollout_step
+            .zip(ctx.rollout_last.first().map(|a| a.since))
+            .map(|(step, at)| codex_step_is_fresh(step, now.saturating_sub(at)))
+            .unwrap_or(false);
+        if !fresh {
+            ctx.rollout_last.clear();
+        }
+        return ctx.rollout_last.clone();
     }
     ctx.rollout_sig = mtime;
     ctx.rollout_last.clear();
+    ctx.rollout_step = None;
     if let Some(text) = crate::codex::tail_text(&p) {
         if let Some((step, ts)) = codex_last_step(&text) {
             let at = ts.max(mtime);
             let quiet = now.saturating_sub(at);
-            let busy = match step {
-                CodexStep::Tool => quiet <= 10 * 60_000,
-                CodexStep::Thinking => quiet <= 120_000,
-                CodexStep::AsstMsg => quiet <= 4_000,
-                CodexStep::Aborted => false,
-            };
+            let busy = codex_step_is_fresh(step, quiet);
+            ctx.rollout_step = Some(step);
             if busy {
                 let context = crate::codex::latest_model_context();
-                ctx.rollout_last = vec![Activity { provider: "codex".into(), state: "busy".into(), name: "Codex".into(), detail: "Working (rollout)".into(), since: at, model: context.as_ref().map(|c| c.model.clone()).unwrap_or_default(), mode: context.as_ref().map(|c| c.mode.clone()).unwrap_or_default(), signal: "inferred".into() }];
+                ctx.rollout_last = vec![Activity {
+                    provider: "codex".into(),
+                    state: "busy".into(),
+                    name: "Codex".into(),
+                    detail: "Working (rollout)".into(),
+                    since: at,
+                    model: context
+                        .as_ref()
+                        .map(|c| c.model.clone())
+                        .unwrap_or_default(),
+                    mode: context.as_ref().map(|c| c.mode.clone()).unwrap_or_default(),
+                    signal: "inferred".into(),
+                }];
             }
         }
     }
@@ -459,7 +546,14 @@ fn claude_net_pid(maps: &crate::focus::ProcMaps) -> Option<u32> {
     {
         let g = CLAUDE_NET_PID.lock().unwrap();
         let (pid, at) = *g;
-        if pid != 0 && maps.name.get(&pid).map(|n| n == "claude.exe").unwrap_or(false) && now.saturating_sub(at) < 5 * 60_000 {
+        if pid != 0
+            && maps
+                .name
+                .get(&pid)
+                .map(|n| n == "claude.exe")
+                .unwrap_or(false)
+            && now.saturating_sub(at) < 5 * 60_000
+        {
             return Some(pid);
         }
         // Cache a miss for 60 s too: otherwise a PowerShell run every 2 s (a few hundred ms of CPU each) becomes the next source of lag
@@ -478,10 +572,15 @@ fn claude_net_pid(maps: &crate::focus::ProcMaps) -> Option<u32> {
         "-Command",
         "Get-CimInstance Win32_Process -Filter \"Name='claude.exe'\" | Where-Object { $_.CommandLine -like '*network.mojom.NetworkService*' } | Select-Object -First 1 -ExpandProperty ProcessId",
     ]);
-    cmd.stdin(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+    cmd.stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
     use std::os::windows::process::CommandExt;
     cmd.creation_flags(0x0800_0000);
-    let pid: u32 = match cmd.output().ok().and_then(|o| String::from_utf8_lossy(&o.stdout).trim().parse().ok()) {
+    let pid: u32 = match cmd
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8_lossy(&o.stdout).trim().parse().ok())
+    {
         Some(p) => p,
         None => {
             *CLAUDE_NET_PID.lock().unwrap() = (0, now);
@@ -496,7 +595,9 @@ fn claude_net_pid(maps: &crate::focus::ProcMaps) -> Option<u32> {
 #[cfg(windows)]
 fn claude_io_bytes() -> Option<(u64, u64)> {
     use windows::Win32::Foundation::CloseHandle;
-    use windows::Win32::System::Threading::{GetProcessIoCounters, OpenProcess, IO_COUNTERS, PROCESS_QUERY_LIMITED_INFORMATION};
+    use windows::Win32::System::Threading::{
+        GetProcessIoCounters, OpenProcess, IO_COUNTERS, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
     let maps = crate::focus::proc_maps();
     let net_pid = claude_net_pid(&maps)?;
     let mut other = 0u64;
@@ -507,7 +608,9 @@ fn claude_io_bytes() -> Option<(u64, u64)> {
             continue;
         }
         unsafe {
-            let Ok(h) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, *pid) else { continue };
+            let Ok(h) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, *pid) else {
+                continue;
+            };
             let mut io = IO_COUNTERS::default();
             if GetProcessIoCounters(h, &mut io).is_ok() {
                 other = other.saturating_add(io.OtherTransferCount);
@@ -530,20 +633,32 @@ fn claude_io_bytes() -> Option<(u64, u64)> {
 
 fn claude_activity() -> Vec<Activity> {
     let now = now_ms();
-    let Some((other, read)) = claude_io_bytes() else { return vec![] };
+    let Some((other, read)) = claude_io_bytes() else {
+        return vec![];
+    };
     let mut guard = CLAUDE_IO.lock().unwrap();
     let (rate_other, rate_read) = match guard.as_ref() {
         Some(prev) if now > prev.at && other >= prev.other && read >= prev.read => {
             let dt = (now - prev.at) as f64 / 1000.0;
-            ((other - prev.other) as f64 / dt, (read - prev.read) as f64 / dt)
+            (
+                (other - prev.other) as f64 / dt,
+                (read - prev.read) as f64 / dt,
+            )
         }
         _ => (0.0, 0.0),
     };
-    *guard = Some(IoSample { at: now, other, read });
+    *guard = Some(IoSample {
+        at: now,
+        other,
+        read,
+    });
     drop(guard);
     static SAMPLES: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
     if SAMPLES.fetch_add(1, std::sync::atomic::Ordering::Relaxed) < 240 {
-        crate::applog(&format!("claude io: net {:.0} B/s, disk {:.0} B/s", rate_other, rate_read));
+        crate::applog(&format!(
+            "claude io: net {:.0} B/s, disk {:.0} B/s",
+            rate_other, rate_read
+        ));
     }
     // Two consecutive samples (≈4 s) above the threshold; a single spike (heartbeat, sync) does not count
     if rate_other >= CLAUDE_RATE_BPS {
@@ -555,7 +670,16 @@ fn claude_activity() -> Vec<Activity> {
     }
     let last = CLAUDE_LAST_ACTIVE.load(std::sync::atomic::Ordering::Relaxed);
     if last > 0 && now.saturating_sub(last) <= CLAUDE_HOLD_MS {
-        vec![Activity { provider: "claude".into(), state: "busy".into(), name: "Claude Desktop".into(), detail: "Activity detected (network)".into(), since: last, model: String::new(), mode: "Desktop".into(), signal: "inferred".into() }]
+        vec![Activity {
+            provider: "claude".into(),
+            state: "busy".into(),
+            name: "Claude Desktop".into(),
+            detail: "Activity detected (network)".into(),
+            since: last,
+            model: String::new(),
+            mode: "Desktop".into(),
+            signal: "inferred".into(),
+        }]
     } else {
         vec![]
     }
@@ -565,9 +689,15 @@ fn claude_activity() -> Vec<Activity> {
 
 fn antigravity_activity() -> Vec<Activity> {
     let mut newest: Option<(String, u64)> = None;
-    let brains = crate::antigravity::state_roots().into_iter().filter_map(|r| std::fs::read_dir(r.join("brain")).ok());
+    let brains = crate::antigravity::state_roots()
+        .into_iter()
+        .filter_map(|r| std::fs::read_dir(r.join("brain")).ok());
     for e in brains.flat_map(|rd| rd.flatten()) {
-        let t = e.path().join(".system_generated").join("logs").join("transcript.jsonl");
+        let t = e
+            .path()
+            .join(".system_generated")
+            .join("logs")
+            .join("transcript.jsonl");
         let Some(m) = mtime_ms(&t) else { continue };
         if newest.as_ref().map(|(_, n)| m > *n).unwrap_or(true) {
             newest = Some((e.file_name().to_string_lossy().to_string(), m));
@@ -577,7 +707,16 @@ fn antigravity_activity() -> Vec<Activity> {
     if now_ms().saturating_sub(at) > ANTIGRAVITY_STALE_MS {
         return vec![];
     }
-    vec![Activity { provider: "gemini".into(), state: "busy".into(), name: "Antigravity".into(), detail: "Working (recent transcript)".into(), since: at, model: String::new(), mode: String::new(), signal: "inferred".into() }]
+    vec![Activity {
+        provider: "gemini".into(),
+        state: "busy".into(),
+        name: "Antigravity".into(),
+        detail: "Working (recent transcript)".into(),
+        since: at,
+        model: String::new(),
+        mode: String::new(),
+        signal: "inferred".into(),
+    }]
 }
 
 // ---------------- Putting it together ----------------
@@ -662,7 +801,8 @@ fn add_open_providers(all: &mut Vec<Activity>, p: Presence) {
                     "copilot" => "VS Code",
                     "codex" => "Desktop",
                     _ => "",
-                }.into(),
+                }
+                .into(),
                 signal: "presence".into(),
             });
         }
@@ -690,12 +830,18 @@ fn read_all(p: Presence, ctx: &mut Ctx) -> Vec<Activity> {
 
 #[cfg(test)]
 mod tests {
-    use super::{cursor_meta, item_needs_input, provider_for_process};
+    use super::{
+        codex_step_is_fresh, codex_turn_is_fresh, cursor_meta, item_needs_input,
+        provider_for_process, CodexStep,
+    };
 
     #[test]
     fn classifies_only_real_provider_processes() {
         assert_eq!(provider_for_process("codex.exe"), Some("codex"));
-        assert_eq!(provider_for_process("codex-code-mode-host.exe"), Some("codex"));
+        assert_eq!(
+            provider_for_process("codex-code-mode-host.exe"),
+            Some("codex")
+        );
         assert_eq!(provider_for_process("claude.exe"), Some("claude"));
         assert_eq!(provider_for_process("cursor.exe"), Some("cursor"));
         assert_eq!(provider_for_process("antigravity.exe"), Some("gemini"));
@@ -708,25 +854,64 @@ mod tests {
 
     #[test]
     fn detects_only_structured_pending_input_signals() {
-        assert!(item_needs_input("event", r#"{"type":"request_user_input"}"#));
-        assert!(item_needs_input("McpToolCall", r#"{"payload":{"name":"elicitation_request"}}"#));
-        assert!(item_needs_input("tool", r#"{"approval_status":"needsApproval"}"#));
-        assert!(!item_needs_input("message", r#"{"content":"please request user approval in the docs"}"#));
-        assert!(!item_needs_input("McpToolCall", r#"{"status":"completed"}"#));
+        assert!(item_needs_input(
+            "event",
+            r#"{"type":"request_user_input"}"#
+        ));
+        assert!(item_needs_input(
+            "McpToolCall",
+            r#"{"payload":{"name":"elicitation_request"}}"#
+        ));
+        assert!(item_needs_input(
+            "tool",
+            r#"{"approval_status":"needsApproval"}"#
+        ));
+        assert!(!item_needs_input(
+            "message",
+            r#"{"content":"please request user approval in the docs"}"#
+        ));
+        assert!(!item_needs_input(
+            "McpToolCall",
+            r#"{"status":"completed"}"#
+        ));
     }
 
     #[test]
     fn reads_cursor_model_and_mode_without_inventing_them() {
         let v = serde_json::json!({"selectedModel":{"name":"claude-4.5-sonnet"},"mode":"agent"});
-        assert_eq!(cursor_meta(&v), ("claude-4.5-sonnet".into(), "agent".into()));
-        assert_eq!(cursor_meta(&serde_json::json!({"name":"chat"})), (String::new(), String::new()));
+        assert_eq!(
+            cursor_meta(&v),
+            ("claude-4.5-sonnet".into(), "agent".into())
+        );
+        assert_eq!(
+            cursor_meta(&serde_json::json!({"name":"chat"})),
+            (String::new(), String::new())
+        );
+    }
+
+    #[test]
+    fn codex_rollout_timeouts_match_the_last_step() {
+        assert!(codex_step_is_fresh(CodexStep::Tool, 9 * 60_000));
+        assert!(!codex_step_is_fresh(CodexStep::Thinking, 121_000));
+        assert!(codex_step_is_fresh(CodexStep::AsstMsg, 4_000));
+        assert!(!codex_step_is_fresh(CodexStep::AsstMsg, 4_001));
+        assert!(!codex_step_is_fresh(CodexStep::Aborted, 0));
+    }
+
+    #[test]
+    fn exact_pending_input_outlives_generic_activity_timeout() {
+        let now = 20 * 60_000;
+        assert!(codex_turn_is_fresh(true, now, 1, 1));
+        assert!(!codex_turn_is_fresh(false, now, 1, 1));
     }
 }
 
 /// For doctor: the raw material behind the Codex working-state decision
 pub fn probe() -> String {
     let now = now_ms();
-    let Some(p) = crate::codex::newest_rollout() else { return "Codex activity: no rollout found".into() };
+    let Some(p) = crate::codex::newest_rollout() else {
+        return "Codex activity: no rollout found".into();
+    };
     let age = now.saturating_sub(mtime_ms(&p).unwrap_or(0)) / 1000;
     let step = crate::codex::tail_text(&p).and_then(|t| codex_last_step(&t));
     let tail: Vec<String> = crate::codex::tail_text(&p)
@@ -741,8 +926,12 @@ pub fn probe() -> String {
                             format!(
                                 "{}/{}/{}",
                                 v.get("type").and_then(|x| x.as_str()).unwrap_or("?"),
-                                v.pointer("/payload/type").and_then(|x| x.as_str()).unwrap_or("-"),
-                                v.pointer("/payload/role").and_then(|x| x.as_str()).unwrap_or("-")
+                                v.pointer("/payload/type")
+                                    .and_then(|x| x.as_str())
+                                    .unwrap_or("-"),
+                                v.pointer("/payload/role")
+                                    .and_then(|x| x.as_str())
+                                    .unwrap_or("-")
                             )
                         })
                         .unwrap_or_else(|_| "(not a JSON line)".into())
@@ -760,7 +949,9 @@ pub fn probe() -> String {
 
 #[cfg(windows)]
 pub fn lower_thread_priority() {
-    use windows::Win32::System::Threading::{GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_BELOW_NORMAL};
+    use windows::Win32::System::Threading::{
+        GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_BELOW_NORMAL,
+    };
     unsafe {
         let _ = SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
     }

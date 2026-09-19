@@ -78,7 +78,7 @@ fn backup_and_write(path: &PathBuf, root: &Value) -> Result<(), String> {
         );
     }
     let txt = serde_json::to_string_pretty(root).map_err(|e| e.to_string())?;
-    std::fs::write(path, txt).map_err(|e| e.to_string())
+    crate::config::atomic_write(path, txt.as_bytes()).map_err(|e| e.to_string())
 }
 
 pub fn is_installed() -> bool {
@@ -95,14 +95,26 @@ pub fn is_installed() -> bool {
 
 pub fn install() -> Result<String, String> {
     let path = settings_path().ok_or("cannot find the user directory")?;
-    let hook_exe = std::env::current_exe()
+    let program_dir = std::env::current_exe()
         .map_err(|e| e.to_string())?
         .parent()
         .ok_or("cannot locate the program directory")?
-        .join("codenotch-hook.exe");
-    if !hook_exe.exists() {
-        return Err(format!("missing {}", hook_exe.display()));
-    }
+        .to_path_buf();
+    // Portable ZIPs keep the helper beside Codenotch.exe. Tauri installers put declared
+    // resources in an adjacent `resources` directory. Supporting both keeps one safe hook path
+    // without copying an executable into the user's profile at runtime.
+    let hook_exe = [
+        program_dir.join("codenotch-hook.exe"),
+        program_dir.join("resources").join("codenotch-hook.exe"),
+    ]
+    .into_iter()
+    .find(|candidate| candidate.is_file())
+    .ok_or_else(|| {
+        format!(
+            "Codenotch approval helper is missing from {}. Reinstall Codenotch with the Setup download.",
+            program_dir.display()
+        )
+    })?;
 
     let mut root = load(&path)?;
     if !root.is_object() {

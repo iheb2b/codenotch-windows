@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// How small the notch may be drawn, as a multiple of its designed size. Below roughly 0.4 the
 /// rings stop being readable at 100 % display scaling.
@@ -151,10 +151,27 @@ pub fn config_path() -> PathBuf {
 pub fn load() -> Config {
     let path = config_path();
     let raw = std::fs::read_to_string(&path).ok();
-    let mut cfg: Config = raw
-        .as_deref()
-        .and_then(|t| serde_json::from_str(&t).ok())
-        .unwrap_or_default();
+    let parsed = raw.as_deref().map(serde_json::from_str::<Config>);
+    let mut cfg: Config = match parsed {
+        Some(Ok(cfg)) => cfg,
+        Some(Err(error)) => {
+            // Startup persists migrations immediately. Preserve a malformed hand-edited or
+            // partially-written file before defaults replace it, so recovery remains possible.
+            let stamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let backup = path.with_file_name(format!("config.corrupt-{stamp}.json"));
+            let _ = std::fs::copy(&path, &backup);
+            eprintln!(
+                "invalid config {} ({error}); backup: {}",
+                path.display(),
+                backup.display()
+            );
+            Config::default()
+        }
+        None => Config::default(),
+    };
 
     if !valid_bridge_token(&cfg.bridge_token) {
         // A random browser-to-localhost CSRF boundary, not an account credential. Processes
@@ -216,12 +233,61 @@ pub fn load() -> Config {
     cfg
 }
 
+/// Replace a small settings file through a fully-written sibling temporary file. Keeping the
+/// temporary file in the same directory makes the final rename a same-volume atomic operation.
+pub(crate) fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let id = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("settings");
+    let temp = path.with_file_name(format!("{name}.tmp.{}.{}", std::process::id(), id));
+    let result = (|| {
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        std::fs::rename(&temp, path)
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&temp);
+    }
+    result
+}
+
 pub fn save(cfg: &Config) {
     let path = config_path();
-    if let Some(dir) = path.parent() {
-        let _ = std::fs::create_dir_all(dir);
-    }
     if let Ok(txt) = serde_json::to_string_pretty(cfg) {
-        let _ = std::fs::write(path, txt);
+        if let Err(error) = atomic_write(&path, txt.as_bytes()) {
+            eprintln!("cannot save {}: {error}", path.display());
+        }
+    }
+}
+
+#[cfg(test)]
+mod atomic_tests {
+    use super::atomic_write;
+
+    #[test]
+    fn atomic_write_replaces_complete_content() {
+        let dir = std::env::temp_dir().join(format!("codenotch-config-{}", std::process::id()));
+        let path = dir.join("config.json");
+        let _ = std::fs::create_dir_all(&dir);
+        atomic_write(&path, b"first").unwrap();
+        atomic_write(&path, b"second").unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"second");
+        assert!(!dir
+            .read_dir()
+            .unwrap()
+            .flatten()
+            .any(|e| e.file_name().to_string_lossy().contains(".tmp.")));
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

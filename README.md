@@ -3,9 +3,9 @@
 [![Build Windows app](https://github.com/iheb2b/codenotch-windows/actions/workflows/windows-release.yml/badge.svg)](https://github.com/iheb2b/codenotch-windows/actions/workflows/windows-release.yml)
 [![Latest release](https://img.shields.io/github/v/release/iheb2b/codenotch-windows?display_name=tag&sort=semver)](https://github.com/iheb2b/codenotch-windows/releases/latest)
 
-[![Download Codenotch for Windows](https://img.shields.io/badge/Download-Codenotch%20for%20Windows-0078D4?style=for-the-badge&logo=windows11&logoColor=white)](https://github.com/iheb2b/codenotch-windows/releases/latest/download/Codenotch.exe)
+[![Download Codenotch for Windows](https://img.shields.io/badge/Download-Codenotch%20for%20Windows-0078D4?style=for-the-badge&logo=windows11&logoColor=white)](https://github.com/iheb2b/codenotch-windows/releases/latest/download/Codenotch-Setup.exe)
 
-**Windows 10/11 · x64 · Portable EXE**
+**Windows 10/11 · x64 · Installer EXE**
 
 [Release notes](https://github.com/iheb2b/codenotch-windows/releases/latest) · [SHA-256 checksums](https://github.com/iheb2b/codenotch-windows/releases/latest/download/SHA256SUMS.txt)
 
@@ -65,6 +65,11 @@ Prerequisites: Rust 1.94 or newer (MSVC toolchain), WebView2 runtime (ships with
 cargo build --release
 .\target\release\codenotch.exe          # pill appears on the right edge of the primary monitor
 .\target\release\codenotch.exe doctor   # self-diagnosis: credentials, data sources, icons, hooks
+
+# installer (build the helper first because it is bundled as an app resource)
+cargo build --release --locked -p codenotch-hook
+cd codenotch
+cargo tauri build --bundles nsis -- --locked
 ```
 
 Tray menu: dashboard, settings, refresh now, and quit. Detailed controls live in Settings; logs,
@@ -73,11 +78,12 @@ persisted readings, and icon overrides live in `%APPDATA%\codenotch`.
 ## Download a Windows build
 
 Click **Download Codenotch for Windows** at the top of this page. The button always downloads the
-standalone `Codenotch.exe` from the latest stable GitHub release, so it does not need to change when
-a new version is published. Run the downloaded executable directly; no ZIP extraction is required.
+`Codenotch-Setup.exe` from the latest stable GitHub release, so it does not need to change when a
+new version is published. The installer includes the approval helper required by the Claude Code
+bridge and installs both files together for the current Windows user.
 
-Every release also includes the standalone executables, release notes, and SHA-256 checksums on the
-[Releases page](https://github.com/iheb2b/codenotch-windows/releases/latest).
+Every release also includes a portable ZIP containing both executables, release notes, and SHA-256
+checksums on the [Releases page](https://github.com/iheb2b/codenotch-windows/releases/latest).
 
 ### Smart App Control and Windhawk
 

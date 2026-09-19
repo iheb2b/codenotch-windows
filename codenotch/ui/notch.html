@@ -581,7 +581,15 @@ function elapsedCopy(ms){
 
 function activeInfo(p){
   const approval=pendingApprovals.find(a=>a.provider===p.id);
-  if(approval) return {state:'attention',name:approval.summary||approval.tool_name||p.name,since:approval.requested_at||0,sessionId:approval.session_id||'',approval};
+  if(approval){
+    // Approval state and provider context are complementary. Keep the active Claude session on
+    // the row so model/mode/permission details do not disappear exactly when attention is needed.
+    const session=p.id==='claude'
+      ?(stateSnap.sessions||[]).find(s=>s.state!=='idle'&&(!approval.session_id||s.id===approval.session_id))
+        ||(stateSnap.sessions||[]).find(s=>s.state==='attention'||s.state==='running')
+      :null;
+    return {state:'attention',name:approval.summary||approval.tool_name||p.name,since:approval.requested_at||0,sessionId:approval.session_id||'',approval,session};
+  }
   let completedClaude=null;
   if(p.id==='claude'){
     const rows=(stateSnap.sessions||[]).filter(s=>s.state!=='idle');

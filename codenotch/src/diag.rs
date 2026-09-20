@@ -1,4 +1,4 @@
-//! `codenotch.exe doctor deep`: deep diagnostics for finding "is it working?" signals.
+//! `code-center.exe doctor deep`: deep diagnostics for finding "is it working?" signals.
 //! Prints only structure, types and times. Scalar values and process command lines are deliberately
 //! omitted so no token, account field, prompt, or conversation content can enter the report.
 

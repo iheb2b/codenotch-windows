@@ -1,9 +1,9 @@
 [package]
-name = "codenotch-hook"
-version = "0.5.0"
+name = "code-center-hook"
+version = "0.6.0"
 edition = "2021"
-description = "Codenotch hook launcher: Claude Code activity and one-shot approval relay"
+description = "Code Center hook launcher: Claude Code activity and one-shot approval relay"
 license = "MIT"
-repository = "https://github.com/iheb2b/codenotch-windows"
+repository = "https://github.com/iheb2b/code-center-windows"
 
 [dependencies]

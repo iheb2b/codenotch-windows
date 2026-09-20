@@ -28,7 +28,7 @@ use tauri::{AppHandle, Emitter, Manager};
 /// Logical size of the notch window: the enlarged rail on the right plus room for the hover card.
 pub const NOTCH_W: f64 = 480.0;
 /// Hand-bumped build tag, written to run.log at startup so a log can always be matched to the exe that wrote it.
-pub const BUILD: &str = "v0.5.0-reliability";
+pub const BUILD: &str = "v0.6.0-code-center";
 pub const NOTCH_H: f64 = 680.0; // room for the 125% approval card without clipping its actions
 
 pub struct AppState {
@@ -386,7 +386,7 @@ fn open_provider_page(provider: String) {
     let _ = cmd.spawn();
 }
 
-/// Bring the provider back to the front. This is the safe half of an approval action: Codenotch
+/// Bring the provider back to the front. This is the safe half of an approval action: Code Center
 /// can point at the exact application that needs attention, but it never synthesizes an approval
 /// click without a stable request id and a preview of what is being authorized.
 #[tauri::command]
@@ -1013,13 +1013,13 @@ fn show_aux_window(app: &AppHandle, label: &str) -> Result<(), String> {
         let (url, title, width, height, min_width, min_height) = match label {
             "settings" => (
                 "settings.html",
-                "Codenotch Settings",
+                "Code Center Settings",
                 520.0,
                 620.0,
                 460.0,
                 520.0,
             ),
-            "dashboard" => ("dashboard.html", "Codenotch", 980.0, 700.0, 760.0, 560.0),
+            "dashboard" => ("dashboard.html", "Code Center", 980.0, 700.0, 760.0, 560.0),
             _ => return Err("unknown window".into()),
         };
         let w = tauri::WebviewWindowBuilder::new(app, label, tauri::WebviewUrl::App(url.into()))
@@ -1129,9 +1129,9 @@ fn paint_tray(app: &AppHandle, mode: &str, slots: &[config::TraySlot], values: &
         })
         .collect();
     let tip = if parts.is_empty() {
-        concat!("Codenotch v", env!("CARGO_PKG_VERSION")).to_string()
+        concat!("Code Center v", env!("CARGO_PKG_VERSION")).to_string()
     } else {
-        format!("Codenotch — {}", parts.join(" · "))
+        format!("Code Center — {}", parts.join(" · "))
     };
     let _ = tray.set_tooltip(Some(&tip));
 }
@@ -1188,7 +1188,9 @@ fn ack_scan(app: &AppHandle) -> bool {
     }
     let maps = focus::proc_maps();
     let fg_name = maps.name.get(&fg).cloned().unwrap_or_default();
-    let fg_is_claude_desktop = fg_name.contains("claude") && !fg_name.contains("codenotch");
+    let fg_is_claude_desktop = fg_name.contains("claude")
+        && !fg_name.contains("code-center")
+        && !fg_name.contains("codenotch");
     let st = app.state::<AppState>();
     let mut store = st.store.lock().unwrap();
     store.ack_done(|s| {
@@ -1243,7 +1245,7 @@ fn main() {
                 let r = match args.get(2).map(|s| s.as_str()) {
                     Some("on") => autostart::enable(),
                     Some("off") => autostart::disable(),
-                    _ => Err("usage: codenotch.exe autostart on|off".into()),
+                    _ => Err("usage: code-center.exe autostart on|off".into()),
                 };
                 report(r);
                 return;
@@ -1271,7 +1273,7 @@ fn main() {
             // Launching a freshly built exe while the old one is still running lands here: the new
             // instance is turned away and what stays on screen is the old process. Say so loudly.
             applog(&format!("single instance: another launch was refused; the running instance is build={BUILD} — quit it from the tray first if you just rebuilt"));
-            let _ = app.emit("notice", format!("Codenotch is already running ({BUILD}) — quit it from the tray before starting a new build"));
+            let _ = app.emit("notice", format!("Code Center is already running ({BUILD}) — quit it from the tray before starting a new build"));
         }))
         .manage(AppState {
             store: Mutex::new(Default::default()),
@@ -1393,7 +1395,7 @@ fn main() {
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("Codenotch failed to start");
+        .expect("Code Center failed to start");
 }
 
 #[cfg(test)]
@@ -1482,7 +1484,7 @@ mod tests {
     #[test]
     fn dashboard_opens_only_normal_github_links() {
         assert!(is_safe_github_url(
-            "https://github.com/iheb2b/codenotch-windows/actions/runs/123"
+            "https://github.com/iheb2b/code-center-windows/actions/runs/123"
         ));
         assert!(!is_safe_github_url("http://github.com/iheb2b/repo"));
         assert!(!is_safe_github_url("https://github.com.evil.example/repo"));

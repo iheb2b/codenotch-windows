@@ -1,8 +1,8 @@
 //! GitHub Copilot presence and account-quota adapter.
 //!
-//! Quota comes from the official Copilot SDK's experimental `account.getQuota` RPC. Codenotch
+//! Quota comes from the official Copilot SDK's experimental `account.getQuota` RPC. Code Center
 //! starts the user's existing Copilot CLI briefly, reads only entitlement counters, then shuts it
-//! down. The CLI is not bundled, credentials are never read by Codenotch, and no prompt/session is
+//! down. The CLI is not bundled, credentials are never read by Code Center, and no prompt/session is
 //! created. If GitHub changes this experimental shape, the adapter degrades to an unavailable note.
 
 use crate::usage::{LimitWindow, UsageSnapshot};
@@ -176,7 +176,7 @@ fn fetch() -> Result<UsageSnapshot, String> {
         .map_err(|e| e.to_string())?;
     rt.block_on(async move {
         let info = ClientInfo::new()
-            .with_application_name("Codenotch")
+            .with_application_name("Code Center")
             .with_application_version(env!("CARGO_PKG_VERSION"))
             .with_integration_name("usage-meter");
         let options = ClientOptions::new()

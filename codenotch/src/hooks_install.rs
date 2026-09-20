@@ -1,5 +1,5 @@
-//! Merges codenotch-hook.exe into ~/.claude/settings.json without overwriting the user's own hooks.
-//! Identification: the command contains "codenotch-hook". A backup is written first.
+//! Merges code-center-hook.exe into ~/.claude/settings.json without overwriting the user's own hooks.
+//! Former helper names stay recognized so upgrades replace and remove them safely.
 
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
@@ -38,7 +38,11 @@ fn is_ours(entry: &Value) -> bool {
                             .any(|name| {
                                 matches!(
                                     name.as_str(),
-                                    "codenotch-hook.exe"
+                                    "code-center-hook.exe"
+                                        | "code-center-hook"
+                                        | "codecenter-hook.exe"
+                                        | "codecenter-hook"
+                                        | "codenotch-hook.exe"
                                         | "codenotch-hook"
                                         | "eatbean-hook.exe"
                                         | "eatbean-hook"
@@ -88,7 +92,10 @@ pub fn is_installed() -> bool {
         // into the new approval bridge explicitly; upgrading must not broaden permissions silently.
         .map(|t| {
             let t = t.to_ascii_lowercase();
-            t.contains("codenotch-hook") && t.contains("approval-claude")
+            (t.contains("code-center-hook")
+                || t.contains("codecenter-hook")
+                || t.contains("codenotch-hook"))
+                && t.contains("approval-claude")
         })
         .unwrap_or(false)
 }
@@ -100,10 +107,12 @@ pub fn install() -> Result<String, String> {
         .parent()
         .ok_or("cannot locate the program directory")?
         .to_path_buf();
-    // Portable ZIPs keep the helper beside Codenotch.exe. Tauri installers put declared
+    // Portable ZIPs keep the helper beside code-center.exe. Tauri installers put declared
     // resources in an adjacent `resources` directory. Supporting both keeps one safe hook path
     // without copying an executable into the user's profile at runtime.
     let hook_exe = [
+        program_dir.join("code-center-hook.exe"),
+        program_dir.join("resources").join("code-center-hook.exe"),
         program_dir.join("codenotch-hook.exe"),
         program_dir.join("resources").join("codenotch-hook.exe"),
     ]
@@ -111,7 +120,7 @@ pub fn install() -> Result<String, String> {
     .find(|candidate| candidate.is_file())
     .ok_or_else(|| {
         format!(
-            "Codenotch approval helper is missing from {}. Reinstall Codenotch with the Setup download.",
+            "Code Center approval helper is missing from {}. Reinstall Code Center with the Setup download.",
             program_dir.display()
         )
     })?;
@@ -185,7 +194,7 @@ pub fn uninstall() -> Result<String, String> {
         }
     }
     backup_and_write(&path, &root)?;
-    Ok(format!("removed {removed} Codenotch hook(s)"))
+    Ok(format!("removed {removed} Code Center hook(s)"))
 }
 
 #[cfg(test)]
@@ -195,6 +204,9 @@ mod tests {
 
     #[test]
     fn identifies_our_current_and_legacy_hooks_without_claiming_others() {
+        assert!(is_ours(
+            &json!({"hooks":[{"command":"C:\\Apps\\code-center-hook.exe running"}]})
+        ));
         assert!(is_ours(
             &json!({"hooks":[{"command":"C:\\Apps\\codenotch-hook.exe running"}]})
         ));

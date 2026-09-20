@@ -270,7 +270,10 @@ pub fn focus_claude_desktop() -> bool {
         let Some(name) = maps.name.get(&pid) else {
             continue;
         };
-        if !name.contains("claude") || name.contains("codenotch") {
+        if !name.contains("claude")
+            || name.contains("code-center")
+            || name.contains("codenotch")
+        {
             continue;
         }
         let mut r = RECT::default();
@@ -364,7 +367,7 @@ pub fn focus_provider(provider: &str) -> bool {
     let mut best: Option<(isize, i64)> = None;
     for (h, pid, title) in wins {
         let name = maps.name.get(&pid).map(String::as_str).unwrap_or("");
-        if name.contains("codenotch") || !matches(name, &title) {
+        if name.contains("code-center") || name.contains("codenotch") || !matches(name, &title) {
             continue;
         }
         let mut r = RECT::default();

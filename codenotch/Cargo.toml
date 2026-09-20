@@ -1,11 +1,11 @@
 [package]
-name = "codenotch"
-version = "0.5.0"
+name = "code-center"
+version = "0.6.0"
 edition = "2021"
 rust-version = "1.94"
-description = "Codenotch for Windows — usage and approval notch for Claude, Codex, Cursor, Copilot and Antigravity"
+description = "Code Center for Windows — usage and approval center for Claude, Codex, Cursor, Copilot and Antigravity"
 license = "MIT"
-repository = "https://github.com/iheb2b/codenotch-windows"
+repository = "https://github.com/iheb2b/code-center-windows"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -24,7 +24,7 @@ png = "0.17" # application icon → PNG (provider marks taken from the installed
 chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
 # Cursor's credential lives in state.vscdb (SQLite); bundled = compile the SQLite C sources with the crate, which adds 1–2 minutes to the first build
 rusqlite = { version = "0.32", features = ["bundled"] }
-# Official GitHub Copilot SDK. The CLI is deliberately not bundled: Codenotch reads quota only
+# Official GitHub Copilot SDK. The CLI is deliberately not bundled: Code Center reads quota only
 # when the user already has Copilot CLI installed and signed in.
 github-copilot-sdk = { version = "=1.0.13", default-features = false }
 tokio = { version = "1", features = ["rt", "time"] }

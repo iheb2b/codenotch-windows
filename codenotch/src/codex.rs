@@ -204,7 +204,7 @@ fn fetch_usage(cred: &Credential) -> Result<serde_json::Value, LiveErr> {
             .map_err(|e| LiveErr::Other(format!("parse: {e}"))),
         Err(ureq::Error::Status(code @ (401 | 403), _)) => {
             // Status is enough for diagnostics. Response bodies can contain account-specific
-            // context and therefore never enter Codenotch logs.
+            // context and therefore never enter Code Center logs.
             crate::applog(&format!("codex: usage endpoint HTTP {code}"));
             Err(LiveErr::NeedsAuth)
         }

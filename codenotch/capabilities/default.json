@@ -1,6 +1,6 @@
 {
   "identifier": "default",
-  "description": "Codenotch notch, dashboard, and settings windows: allow core APIs for commands and live state events",
+  "description": "Code Center notch, dashboard, and settings windows: allow core APIs for commands and live state events",
   "windows": ["notch", "settings", "dashboard"],
   "permissions": ["core:default"]
 }

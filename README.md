@@ -1,15 +1,15 @@
-# Codenotch for Windows
+# Code Center for Windows
 
-[![Build Windows app](https://github.com/iheb2b/codenotch-windows/actions/workflows/windows-release.yml/badge.svg)](https://github.com/iheb2b/codenotch-windows/actions/workflows/windows-release.yml)
-[![Latest release](https://img.shields.io/github/v/release/iheb2b/codenotch-windows?display_name=tag&sort=semver)](https://github.com/iheb2b/codenotch-windows/releases/latest)
+[![Build Windows app](https://github.com/iheb2b/code-center-windows/actions/workflows/windows-release.yml/badge.svg)](https://github.com/iheb2b/code-center-windows/actions/workflows/windows-release.yml)
+[![Latest release](https://img.shields.io/github/v/release/iheb2b/code-center-windows?display_name=tag&sort=semver)](https://github.com/iheb2b/code-center-windows/releases/latest)
 
-[![Download Codenotch for Windows](https://img.shields.io/badge/Download-Codenotch%20for%20Windows-0078D4?style=for-the-badge&logo=windows11&logoColor=white)](https://github.com/iheb2b/codenotch-windows/releases/latest/download/Codenotch-Setup.exe)
+[![Download Code Center for Windows](https://img.shields.io/badge/Download-Code%20Center%20for%20Windows-0078D4?style=for-the-badge&logo=windows11&logoColor=white)](https://github.com/iheb2b/code-center-windows/releases/latest/download/Code-Center-Setup.exe)
 
 **Windows 10/11 · x64 · Installer EXE**
 
-[Release notes](https://github.com/iheb2b/codenotch-windows/releases/latest) · [SHA-256 checksums](https://github.com/iheb2b/codenotch-windows/releases/latest/download/SHA256SUMS.txt)
+[Release notes](https://github.com/iheb2b/code-center-windows/releases/latest) · [SHA-256 checksums](https://github.com/iheb2b/code-center-windows/releases/latest/download/SHA256SUMS.txt)
 
-A Windows port of [Codenotch](https://github.com/vinzdg/codenotch) — the usage notch that
+A Windows evolution of [Codenotch](https://github.com/vinzdg/codenotch) — the usage notch that
 sits on the edge of your screen and answers three questions at a glance:
 **what needs me**, **what is still working**, and **how much AI allowance is left**.
 
@@ -33,7 +33,7 @@ Providers that are not installed simply do not get a cell.
 
 ## Work dashboard
 
-- **Attention inbox** — waiting work is sorted first. Claude Code can expose the tool and an action preview through its documented `PermissionRequest` hook, enabling one-time Approve/Deny directly in the notch or release to Claude's full review. Codex, Cursor, and Copilot keep a safe **Review in app** action unless Codenotch owns their session; it never synthesizes clicks.
+- **Attention inbox** — waiting work is sorted first. Claude Code can expose the tool and an action preview through its documented `PermissionRequest` hook, enabling one-time Approve/Deny directly in the notch or release to Claude's full review. Codex, Cursor, and Copilot keep a safe **Review in app** action unless Code Center owns their session; it never synthesizes clicks.
 - **Usage runway** — records only timestamped usage percentages in WebView local storage and learns a 30-day pace estimate. It never stores prompts or credentials in history.
 - **Build watch** — reads the latest GitHub Actions run and release for a public `owner/repository`. Monitoring is read-only: it cannot rerun, cancel, or edit workflows.
 - **Privacy view** — names the local files and remote services behind each reading.
@@ -41,20 +41,20 @@ Providers that are not installed simply do not get a cell.
 The dashboard is available from the edge card and the tray menu. It remains useful with no GitHub repository configured.
 
 Direct Claude Code approvals are opt-in. Open **Settings → Approvals**, enable the Claude Code
-bridge, and restart any already-running Claude Code session so it reloads its hooks. Codenotch
+bridge, and restart any already-running Claude Code session so it reloads its hooks. Code Center
 backs up `.claude\settings.json` before merging its entries and leaves unrelated hooks intact.
 
 ### Antigravity
 
-- **Official CLI (Preferred)**: When the official Antigravity CLI (`agy.exe`) is installed (`%LOCALAPPDATA%\agy\bin\agy.exe` or on `PATH`) and signed in, Codenotch reads official quotas directly without keeping the full IDE running.
+- **Official CLI (Preferred)**: When the official Antigravity CLI (`agy.exe`) is installed (`%LOCALAPPDATA%\agy\bin\agy.exe` or on `PATH`) and signed in, Code Center reads official quotas directly without keeping the full IDE running.
 - **Execution**: Runs the official CLI in a hidden Windows pseudo-console, with a 70-second timeout and cleanup of its process tree. It does not need PowerShell scripts or a separate service.
 - **Refresh**: Checks at startup and on hover/explicit request when readings are at least five minutes old; failed attempts are also limited to once per five minutes. It keeps previous readings on failure, without switching to legacy APIs. The CLI is not launched periodically while idle.
-- **Fallback**: When the official CLI is not installed, Codenotch preserves the legacy local bridge (`language_server`), Credential Manager, and transcript model turn counting to maintain compatibility with existing installations.
+- **Fallback**: When the official CLI is not installed, Code Center preserves the legacy local bridge (`language_server`), Credential Manager, and transcript model turn counting to maintain compatibility with existing installations.
 - **Official CLI Reference**: Standalone `/usage` printing is described in the [official Antigravity CLI documentation](https://www.antigravity.google/docs/cli/headless). Note: no categorical Terms of Service guarantee is made.
 
-Restart Codenotch after installing or removing `agy`: the source is selected at startup.
+Restart Code Center after installing or removing `agy`: the source is selected at startup.
 The CLI's text report is parsed defensively; an unsupported format or failed sign-in
-shows an error or the last reading marked stale. Codenotch does not automate sign-in.
+shows an error or the last reading marked stale. Code Center does not automate sign-in.
 
 ## Install / build
 
@@ -63,11 +63,11 @@ Prerequisites: Rust 1.94 or newer (MSVC toolchain), WebView2 runtime (ships with
 ```powershell
 # from the repository root
 cargo build --release
-.\target\release\codenotch.exe          # pill appears on the right edge of the primary monitor
-.\target\release\codenotch.exe doctor   # self-diagnosis: credentials, data sources, icons, hooks
+.\target\release\code-center.exe          # pill appears on the right edge of the primary monitor
+.\target\release\code-center.exe doctor   # self-diagnosis: credentials, data sources, icons, hooks
 
 # installer (build the helper first because it is bundled as an app resource)
-cargo build --release --locked -p codenotch-hook
+cargo build --release --locked -p code-center-hook
 cd codenotch
 cargo tauri build --bundles nsis --config tauri.release.conf.json -- --locked
 ```
@@ -77,32 +77,32 @@ persisted readings, and icon overrides live in `%APPDATA%\codenotch`.
 
 ## Download a Windows build
 
-Click **Download Codenotch for Windows** at the top of this page. The button always downloads the
-`Codenotch-Setup.exe` from the latest stable GitHub release, so it does not need to change when a
+Click **Download Code Center for Windows** at the top of this page. The button always downloads the
+`Code-Center-Setup.exe` from the latest stable GitHub release, so it does not need to change when a
 new version is published. The installer includes the approval helper required by the Claude Code
 bridge and installs both files together for the current Windows user.
 
 Every release also includes a portable ZIP containing both executables, release notes, and SHA-256
-checksums on the [Releases page](https://github.com/iheb2b/codenotch-windows/releases/latest).
+checksums on the [Releases page](https://github.com/iheb2b/code-center-windows/releases/latest).
 
 ### Smart App Control and Windhawk
 
 If Windows says **“Smart App Control has blocked part of this app”**, first inspect
 **Event Viewer → Applications and Services Logs → Microsoft → Windows → CodeIntegrity → Operational**.
 That message identifies a secondary file another program tried to load; it does not necessarily mean
-that Codenotch itself was blocked.
+that Code Center itself was blocked.
 
 Windhawk injects its engine into processes by default. If the event names
 `Program Files\Windhawk\...\windhawk.dll`, keep Smart App Control enabled and add these entries to
 **Windhawk → Settings → Advanced settings → More advanced settings → Process exclusion list**:
 
 ```text
-Codenotch.exe
+code-center.exe
 msedgewebview2.exe
 ```
 
-Restart Windhawk and Codenotch afterward. Excluded processes are unaffected by Windhawk, while the
-rest of your Windhawk customizations continue to work. Codenotch's own `doctor` command reports this
+Restart Windhawk and Code Center afterward. Excluded processes are unaffected by Windhawk, while the
+rest of your Windhawk customizations continue to work. Code Center's own `doctor` command reports this
 compatibility condition when Windhawk is installed.
 
 ### Icons
@@ -130,10 +130,10 @@ All provider marks remain trademarks of their respective owners.
 
 This port follows the upstream design spec (`docs/specs/2026-08-28-usage-notch-design.md`)
 and provider semantics. It is developed at
-[iheb2b/codenotch-windows](https://github.com/iheb2b/codenotch-windows) and offered to the
+[iheb2b/code-center-windows](https://github.com/iheb2b/code-center-windows) and offered to the
 upstream project as its `windows/` tree; the two are kept in sync. The session-detection engine
 originated in [Im-Midi/Pac-Man](https://github.com/Im-Midi/Pac-Man) (MIT).
 
 ## License
 
-MIT — see `LICENSE`. The Codenotch design and name belong to the upstream author.
+MIT — see `LICENSE`. The original Codenotch design and name belong to the upstream author.

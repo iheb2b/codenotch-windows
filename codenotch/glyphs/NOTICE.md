@@ -10,7 +10,7 @@ The default Claude, Codex, Cursor, and GitHub icons are original provider assets
 | `github-original.svg` | [Official GitHub brand kit](https://brand.github.com/foundations/logo) | `GitHub_Invertocat_White_Clearspace.svg` | `ED102562E49CA3EA6E7D79EA10D54360DBECC5BEB33DE6A60FA578B6C0FAC803` |
 
 These four files are rendered without recolouring, masks, effects, or redrawing. When a provider
-is installed, Codenotch may instead extract that installed executable's own icon at runtime.
+is installed, Code Center may instead extract that installed executable's own icon at runtime.
 
 `gemini.svg`, `gemini-alt.svg`, and the legacy unused SVG alternatives come from
 [`@lobehub/icons-static-svg`](https://github.com/lobehub/lobe-icons) 1.95.0 (MIT). MIT License —

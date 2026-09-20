@@ -1,4 +1,4 @@
-//! codenotch-hook: the minimal client Claude Code's hooks call.
+//! code-center-hook: the minimal client Claude Code's hooks call.
 //! Duties: 1) report activity plus stdin JSON to the main app; 2) for Claude Code's documented
 //! PermissionRequest hook, wait for one explicit one-shot decision; 3) launch the app if needed.
 //! Failures never approve anything: a failed/timed-out relay prints no decision, leaving Claude's
@@ -184,10 +184,12 @@ fn spawn_main() {
         return;
     };
     let Some(dir) = me.parent() else { return };
-    let exe = dir.join("codenotch.exe");
-    if !exe.exists() {
+    let exe = [dir.join("code-center.exe"), dir.join("codenotch.exe")]
+        .into_iter()
+        .find(|path| path.exists());
+    let Some(exe) = exe else {
         return;
-    }
+    };
     let mut cmd = std::process::Command::new(exe);
     cmd.stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())

@@ -1,4 +1,4 @@
-//! `codenotch.exe doctor` — self-diagnosis: look instead of guessing.
+//! `code-center.exe doctor` — self-diagnosis: look instead of guessing.
 //! Checks the config, port occupancy, watch roots, the newest session file and how its tail parses,
 //! and writes to stdout plus %APPDATA%\codenotch\doctor.log.
 
@@ -33,7 +33,7 @@ fn age_secs(t: SystemTime) -> u64 {
 
 pub fn run() -> String {
     let mut o = String::new();
-    o += &format!("== Codenotch doctor v{} ==\n", env!("CARGO_PKG_VERSION"));
+    o += &format!("== Code Center doctor v{} ==\n", env!("CARGO_PKG_VERSION"));
 
     let cfg = crate::config::load();
     o += &format!(
@@ -44,7 +44,7 @@ pub fn run() -> String {
     );
 
     match std::net::TcpListener::bind(("127.0.0.1", cfg.port)) {
-        Ok(_) => o += "port: free — no Codenotch instance is running\n",
+        Ok(_) => o += "port: free — no Code Center instance is running\n",
         Err(_) => o += "port: in use — an instance is already running (quit it from the tray before starting a new build)\n",
     }
 
@@ -102,7 +102,7 @@ pub fn run() -> String {
         o += "\ncompatibility:\n";
         if let Some(path) = windhawk {
             o += &format!(
-                "  Windhawk detected at {}. If Smart App Control reports that part of Codenotch was blocked, add Codenotch.exe and msedgewebview2.exe to Windhawk Settings > Advanced settings > More advanced settings > Process exclusion list. Keep Smart App Control enabled.\n",
+                "  Windhawk detected at {}. If Smart App Control reports that part of Code Center was blocked, add code-center.exe and msedgewebview2.exe to Windhawk Settings > Advanced settings > More advanced settings > Process exclusion list. Keep Smart App Control enabled.\n",
                 path.display()
             );
         } else {

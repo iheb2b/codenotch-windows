@@ -848,6 +848,7 @@ mod tests {
         assert_eq!(provider_for_process("GitHubCopilot.exe"), Some("copilot"));
         assert_eq!(provider_for_process("Code.exe"), None);
         assert_eq!(provider_for_process("codenotch.exe"), None);
+        assert_eq!(provider_for_process("code-center.exe"), None);
         assert_eq!(provider_for_process("chatgpt.exe"), None);
         assert_eq!(provider_for_process("codex-command-runner-0.1.exe"), None);
     }
